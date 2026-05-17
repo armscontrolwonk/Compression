@@ -182,6 +182,51 @@ drawn with. When comparing composite yield curves to NRDC, use
 `--model 6.49` on the single-material side as well. Cochran himself notes
 that 6.57 and 6.49 agree to within ~30%.
 
+### Physics and validation
+
+The composite-core extension builds directly on Cochran's one-group
+bare-sphere derivation (*Bare Homogeneous Fast Fission Device Using
+One-Group Diffusion Theory*, 1994/rev. 2007). Where Cochran solves a single
+Helmholtz equation for the radial flux, φ ∝ sin(πr/R)/r with the closed
+form α = α∞·[1 − (R_c/R)²], the composite generalization replaces that
+with a two-region eigenvalue problem: separate Helmholtz solutions in the
+inner Pu core (φ₁ = A sin(B₁r)/r) and outer HEU shell (φ₂ = [C sin(B₂r) +
+D cos(B₂r)]/r), joined by continuity of flux and current at the interface
+and zero flux at the outer surface — exactly the boundary-condition
+framework Serber sketches in §11 of *The Los Alamos Primer* for the
+non-fissile-tamper case, here adapted by retaining the fission source
+term in both regions (the textbook treatment of which is in Lamarsh,
+ch. 6). The fundamental α is the root of the transcendental criticality
+determinant from these conditions and feeds Cochran's hydrodynamic yield
+expression Y = (9/10)·M·(ΔR·α)²·V/ΔV (his eq. 6.36, the general
+pre-simplification form of eq. 6.49). Per-region diffusion coefficients
+are derived from Cochran's Table 3.1 via R_c² = π²D/α∞,o — no new fitted
+parameters are introduced. Serber observes in §13 of the *Primer* that
+his rigorous yield coefficient K ≈ 1.1 overstates observed yields and
+"the true value is probably K ≈ ¼ to ½"; Cochran's eq. 6.60 codifies this
+as per-material `b` values (1.0 for WGPu, 0.8 for U-233, 0.5 for HEU), and
+the composite code applies these as a mass-weighted multiplier across the
+two regions by default, with an independent empirical scalar layered on
+top for any future data-driven fit. Reed (Am. J. Phys. 86, 105, 2018; 88,
+108, 2020) treats the same composite-core problem with a
+geometric-progression chain-reaction model and confirms the bare-sphere
+framework's well-documented factor-of-2 overestimate of historical
+yields. Structural validation is exact: with the foundational calibration
+disabled, the single-material limit equals Cochran's eq. 6.49 to
+bit-precision, and the same-material composite (Pu/Pu, HEU/HEU)
+reproduces single-material yields within ~0.5% (residual due to rounding
+in Cochran's tabulated constants). Empirical validation uses a Path-1
+interpretation — back-fit the effective compression η from the observed
+yield rather than chasing absolute yield numbers — against five
+historical anchors: Fat Man (1945, 6.1 kg Pu → 20 kt; pure-Pu reference),
+SANDSTONE X-Ray (1948, 2.38 kg Pu + 4.77 kg HEU → 37 kt, masses derived
+by Hansen in *Swords of Armageddon* Vol. II from declassified efficiency
+figures), RDS-4 (1953, 4.2 kg Pu + 6.8 kg HEU → 28 kt), Low Tony (1960,
+0.9 kg Pu + 5.6 kg HEU → 1 kt, masses from declassified UK MoD/AWRE
+Controllable Document A/1171 dated 31 December 1959), and CHIC-12 (2 kg
+Pu + 0.5 kg HEU → 15 kt, gas-boosted and therefore flagged as an upper
+bound on the pure-fission compression).
+
 ### Inferring effective compression from observed yields
 
 `compression_composite()` inverts the forward model: given observed yield
