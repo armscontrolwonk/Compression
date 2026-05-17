@@ -244,6 +244,103 @@ def test_correction_factor_scales_yield_linearly(factor):
     assert Y_scaled == pytest.approx(factor * Y_base)
 
 
+# ---------------------------------------------------------------------------
+# Material-aware (dict) correction factor: Serber/Cochran b calibration
+# ---------------------------------------------------------------------------
+
+
+def test_correction_factor_dict_pure_pu_uses_pu_b():
+    """In the pure-Pu limit, dict-form correction factor uses the Pu b value
+    (not the outer material's). With SERBER_B and a non-zero outer the
+    mass-weighted result should match the Pu-only case as M_outer -> 0."""
+    from fissionyield import SERBER_B
+
+    Y_pure = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
+    Y_serber = yield_kt_composite(
+        6.1, 0.0, 2.5, "delta-WGPu", "WGU", correction_factor=SERBER_B
+    )
+    # b_Pu = 1.0 -> unchanged
+    assert Y_serber == pytest.approx(Y_pure)
+
+
+def test_correction_factor_dict_pure_heu_uses_heu_b():
+    from fissionyield import SERBER_B
+
+    Y_pure = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU")
+    Y_serber = yield_kt_composite(
+        0.0, 60.0, 2.0, "delta-WGPu", "WGU", correction_factor=SERBER_B
+    )
+    # b_HEU = 0.5 -> half
+    assert Y_serber == pytest.approx(0.5 * Y_pure)
+
+
+def test_correction_factor_dict_composite_mass_weighted():
+    """For RDS-4 (4.2 Pu + 6.8 HEU), the mass-weighted Serber b is
+    (4.2 * 1.0 + 6.8 * 0.5) / 11 = 0.6909..."""
+    from fissionyield import SERBER_B
+
+    Y_base = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU")
+    Y_serber = yield_kt_composite(
+        4.2, 6.8, 5.0, "delta-WGPu", "WGU", correction_factor=SERBER_B
+    )
+    b_expected = (4.2 * 1.0 + 6.8 * 0.5) / 11.0
+    assert Y_serber == pytest.approx(b_expected * Y_base)
+    assert b_expected == pytest.approx(0.6909, rel=1e-3)
+
+
+def test_correction_factor_dict_missing_material_defaults_to_one():
+    """A dict without an entry for the material in use means no correction
+    for that material."""
+    Y_no_corr = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
+    Y_with_unrelated = yield_kt_composite(
+        6.1, 0.0, 2.5, "delta-WGPu", "WGU",
+        correction_factor={"WGU-93.5": 0.5},  # no entry for delta-WGPu
+    )
+    assert Y_with_unrelated == pytest.approx(Y_no_corr)
+
+
+def test_correction_factor_dict_resolves_aliases():
+    """The dict should resolve material aliases (e.g., 'HEU' -> 'WGU-93.5')."""
+    Y_base = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU")
+    Y_alias = yield_kt_composite(
+        0.0, 60.0, 2.0, "delta-WGPu", "WGU",
+        correction_factor={"HEU": 0.5},  # alias for WGU-93.5
+    )
+    assert Y_alias == pytest.approx(0.5 * Y_base)
+
+
+def test_correction_factor_dict_round_trip_through_inverse():
+    """compression_composite must apply the same mass-weighted dict and
+    recover the original eta."""
+    from fissionyield import SERBER_B
+
+    m_pu, m_heu, eta = 4.2, 6.8, 3.0
+    Y = yield_kt_composite(
+        m_pu, m_heu, eta, "delta-WGPu", "WGU", correction_factor=SERBER_B
+    )
+    eta_back = compression_composite(
+        m_pu, m_heu, Y, "delta-WGPu", "WGU", correction_factor=SERBER_B
+    )
+    assert eta_back == pytest.approx(eta, rel=1e-6)
+
+
+def test_serber_b_lifts_fit_eta_for_composites():
+    """Applying Serber b damps the model yield, so to match an observed
+    yield the model needs MORE compression -- fit-eta goes up. Pu-only
+    tests (Fat Man) are unchanged because b_Pu = 1.0."""
+    from fissionyield import SERBER_B, fit_eta, get_test
+
+    # Fat Man: pure Pu (b_eff = 1.0) -> identical
+    eta_pu_default = fit_eta(get_test("Fat Man"))
+    eta_pu_serber = fit_eta(get_test("Fat Man"), correction_factor=SERBER_B)
+    assert eta_pu_serber == pytest.approx(eta_pu_default, rel=1e-9)
+
+    # RDS-4: composite (b_eff ~ 0.69) -> fit eta should rise
+    eta_rds4_default = fit_eta(get_test("RDS-4"))
+    eta_rds4_serber = fit_eta(get_test("RDS-4"), correction_factor=SERBER_B)
+    assert eta_rds4_serber > eta_rds4_default
+
+
 def test_correction_factor_applies_in_single_material_limits():
     Y_base = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
     Y_half = yield_kt_composite(

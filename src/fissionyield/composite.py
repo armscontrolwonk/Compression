@@ -47,7 +47,53 @@ from scipy.optimize import brentq
 from .materials import Material, get_material
 from .model import KT_PER_RAW, yield_kt as _yield_kt_single
 
+# A correction_factor value: either a scalar applied uniformly to the
+# yield, or a dict mapping Material.key (or alias) to a per-material b
+# value, mass-weighted for composites. See materials.SERBER_B.
+CorrectionFactor = float | dict[str, float]
+
 _KG_TO_G = 1000.0
+
+
+def _resolve_b(mapping: dict[str, float], mat: Material) -> float:
+    """Look up per-material b in a correction-factor dict, by key or alias.
+    Missing entries default to 1.0 (no correction)."""
+    if mat.key in mapping:
+        return mapping[mat.key]
+    for alias in mat.aliases:
+        if alias in mapping:
+            return mapping[alias]
+    return 1.0
+
+
+def _effective_correction(
+    correction_factor: CorrectionFactor,
+    mass_inner_kg: float,
+    mass_outer_kg: float,
+    inner_mat: Material,
+    outer_mat: Material,
+) -> float:
+    """Reduce a correction_factor (scalar or dict) to a single scalar
+    multiplier, mass-weighting across the two regions if the input is
+    a per-material dict."""
+    if not isinstance(correction_factor, dict):
+        if correction_factor <= 0:
+            raise ValueError("correction_factor must be positive")
+        return float(correction_factor)
+    total = mass_inner_kg + mass_outer_kg
+    if total <= 0:
+        return 1.0
+    if mass_inner_kg == 0:
+        b = _resolve_b(correction_factor, outer_mat)
+    elif mass_outer_kg == 0:
+        b = _resolve_b(correction_factor, inner_mat)
+    else:
+        b_in = _resolve_b(correction_factor, inner_mat)
+        b_out = _resolve_b(correction_factor, outer_mat)
+        b = (mass_inner_kg * b_in + mass_outer_kg * b_out) / total
+    if b <= 0:
+        raise ValueError("per-material correction factors must be positive")
+    return b
 
 
 def D0(mat: Material) -> float:
@@ -281,7 +327,7 @@ def yield_kt_composite(
     eta: float,
     inner_mat: str | Material,
     outer_mat: str | Material,
-    correction_factor: float = 1.0,
+    correction_factor: CorrectionFactor = 1.0,
 ) -> float:
     """Composite-core yield in kilotons.
 
@@ -291,7 +337,13 @@ def yield_kt_composite(
 
     correction_factor multiplies the final yield. Default 1.0 gives the
     rigorous one-group prediction. Values < 1 model the well-documented
-    overestimate of bare-sphere theory at high kappa (see README).
+    overestimate of bare-sphere theory at high kappa.
+
+    Accepts either a scalar (applied uniformly) or a dict mapping
+    Material.key (or alias) to a per-material b value. For composite
+    cores with a dict the effective multiplier is the mass-weighted
+    average of the two materials' b values, matching Cochran eq. 6.60 /
+    Serber Primer Sec. 13. See materials.SERBER_B for the preset.
     """
     inner = get_material(inner_mat)
     outer = get_material(outer_mat)
@@ -299,19 +351,16 @@ def yield_kt_composite(
         raise ValueError("masses must be non-negative")
     if eta <= 0:
         raise ValueError("compression must be positive")
-    if correction_factor <= 0:
-        raise ValueError("correction_factor must be positive")
     M_total = mass_inner_kg + mass_outer_kg
     if M_total == 0:
         return 0.0
+    cf_eff = _effective_correction(
+        correction_factor, mass_inner_kg, mass_outer_kg, inner, outer
+    )
     if mass_inner_kg == 0:
-        return correction_factor * _yield_kt_single(
-            mass_outer_kg, eta, outer, model="6.49"
-        )
+        return cf_eff * _yield_kt_single(mass_outer_kg, eta, outer, model="6.49")
     if mass_outer_kg == 0:
-        return correction_factor * _yield_kt_single(
-            mass_inner_kg, eta, inner, model="6.49"
-        )
+        return cf_eff * _yield_kt_single(mass_inner_kg, eta, inner, model="6.49")
 
     eta_c = critical_compression(mass_inner_kg, mass_outer_kg, inner, outer)
     if eta <= eta_c:
@@ -327,7 +376,7 @@ def yield_kt_composite(
     V_over_dV = 1.0 / (1.0 - (R2_init / R2_crit) ** 3)
 
     Y_raw = 0.9 * M_total * (delta_R * alpha) ** 2 * V_over_dV
-    return correction_factor * KT_PER_RAW * Y_raw
+    return cf_eff * KT_PER_RAW * Y_raw
 
 
 def compression_composite(
@@ -336,7 +385,7 @@ def compression_composite(
     Y_kt: float,
     inner_mat: str | Material,
     outer_mat: str | Material,
-    correction_factor: float = 1.0,
+    correction_factor: CorrectionFactor = 1.0,
 ) -> float:
     """Compression eta consistent with an observed yield Y_kt for the given
     composite masses.
@@ -347,6 +396,10 @@ def compression_composite(
     the model assigns to that test.
 
     Below criticality (Y_kt = 0) returns the critical compression eta_c.
+
+    correction_factor accepts the same scalar-or-dict form as
+    yield_kt_composite; mass-weighting for composites is applied
+    consistently in the inverse.
     """
     inner = get_material(inner_mat)
     outer = get_material(outer_mat)
@@ -354,16 +407,17 @@ def compression_composite(
         raise ValueError("masses must be non-negative")
     if Y_kt < 0:
         raise ValueError("yield must be non-negative")
-    if correction_factor <= 0:
-        raise ValueError("correction_factor must be positive")
     if mass_inner_kg + mass_outer_kg <= 0:
         raise ValueError("at least one mass must be positive")
+    cf_eff = _effective_correction(
+        correction_factor, mass_inner_kg, mass_outer_kg, inner, outer
+    )
 
     # Single-material reductions: delegate to the existing 6.49 inverse,
-    # adjusting the target yield for the correction factor.
+    # adjusting the target yield for the (already mass-resolved) factor.
     from .model import compression as _compression_single
 
-    Y_target = Y_kt / correction_factor
+    Y_target = Y_kt / cf_eff
     if mass_inner_kg == 0:
         if Y_target == 0:
             return math.sqrt(outer.M0 / mass_outer_kg)

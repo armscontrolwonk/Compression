@@ -21,13 +21,14 @@ from .historical import (
     get_test,
     pure_fission_only,
 )
-from .materials import MATERIALS, Material, get_material
+from .materials import MATERIALS, SERBER_B, Material, get_material
 from .model import compression, kappa, mass_kg, yield_kt
 
 __all__ = [
     "MATERIALS",
     "HistoricalTest",
     "Material",
+    "SERBER_B",
     "alpha_eigenvalue",
     "anchors",
     "composite_tests",

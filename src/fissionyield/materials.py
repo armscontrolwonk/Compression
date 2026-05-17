@@ -116,6 +116,35 @@ _RAW: tuple[Material, ...] = (
 MATERIALS: dict[str, Material] = {m.key: m for m in _RAW}
 
 
+# Serber/Cochran empirical efficiency correction factor "b" on the yield
+# expression Y ~ b * M * (R0 * alpha_inf,o)^2 * (kappa^(1/3) - 1)^3.
+#
+# Serber, *The Los Alamos Primer* (1992 reprint), Section 13: the
+# "rough" derivation gives the coefficient K ~ 1.1, but Serber states
+# "the true value is probably K ~ 1/4 to 1/2". Cochran, *Bare
+# Homogeneous Fast Fission Device Using One-Group Diffusion Theory*
+# (1994, rev. 2007), eq. 6.60, adopts this calibration explicitly:
+#
+#     b = 1.0  for WGPu (no correction relative to the rigorous calc)
+#     b = 0.8  for U-233
+#     b = 0.5  for HEU  (Serber's high estimate)
+#
+# These are calibrations of the bare-sphere one-group model against the
+# residual real-world inefficiencies the model does not capture. Apply
+# them via the correction_factor parameter on yield_kt_composite (and
+# the inverse compression_composite) -- for composite cores the
+# effective factor is mass-weighted across the two regions.
+SERBER_B: dict[str, float] = {
+    "alpha-WGPu": 1.0,
+    "delta-WGPu": 1.0,
+    "WGU-93.5": 0.5,
+    "WGU-95": 0.5,
+    "WGU-93.86": 0.5,
+    "U-233": 0.8,
+    "U-233-98": 0.8,
+}
+
+
 def _norm(s: str) -> str:
     return s.strip().lower().replace("_", "-")
 

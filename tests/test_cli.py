@@ -139,3 +139,61 @@ def test_plot_composite_correction_factor(tmp_path, capsys):
     )
     assert rc == 0
     assert out_png.exists()
+
+
+def test_solve_composite_serber_b_lifts_fit_eta(capsys):
+    """--serber-b damps yield -> the model needs higher eta to match the
+    observed yield (compared to the rigorous default)."""
+    rc, out, _ = run(
+        [
+            "solve-composite",
+            "--pu-mass", "4.2",
+            "--shell-mass", "6.8",
+            "--yield", "28",
+            "--serber-b",
+        ],
+        capsys,
+    )
+    assert rc == 0
+    assert "2.49" in out  # vs 2.34 without --serber-b
+
+
+def test_serber_b_and_correction_factor_mutually_exclusive(capsys):
+    with pytest.raises(SystemExit):
+        run(
+            [
+                "solve-composite",
+                "--pu-mass", "4.2",
+                "--shell-mass", "6.8",
+                "--yield", "28",
+                "--serber-b",
+                "--correction-factor", "0.5",
+            ],
+            capsys,
+        )
+
+
+def test_historical_serber_b(capsys):
+    rc, out, _ = run(["historical", "--serber-b"], capsys)
+    assert rc == 0
+    assert "Serber" in out
+    # Pu-only Fat Man should be unchanged (b_Pu = 1.0)
+    assert "3.021" in out
+
+
+def test_plot_composite_serber_b(tmp_path, capsys):
+    out_png = tmp_path / "serber.png"
+    rc, _, _ = run(
+        [
+            "plot-composite",
+            "--pu-range", "0.1", "3",
+            "--fixed-shell", "4",
+            "--fixed-compression", "3", "5",
+            "--serber-b",
+            "-n", "30",
+            "-o", str(out_png),
+        ],
+        capsys,
+    )
+    assert rc == 0
+    assert out_png.exists()

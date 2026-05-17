@@ -227,6 +227,51 @@ Y_damped = yield_kt_composite(
 )  # ~28 kt at user-supplied eta=5
 ```
 
+### Material-aware Path-2 calibration (Serber / Cochran b)
+
+Serber, *Los Alamos Primer* Sec. 13, derives the rigorous yield coefficient
+K ≈ 1.1 and then states "the true value is probably K ≈ ¼ to ½" — i.e.,
+the bare-sphere model overshoots by a factor of roughly 2 because of
+real-world inefficiencies (predetonation, asymmetric implosion, EOS, etc.)
+not captured by one-group diffusion. Cochran adopts this calibration
+explicitly in eq. 6.60 as a per-material `b` coefficient:
+
+- **WGPu**: b = 1.0 (no correction relative to the rigorous calc)
+- **U-233**: b = 0.8
+- **HEU**: b = 0.5 (Serber's high estimate)
+
+The `correction_factor` parameter on `yield_kt_composite` and
+`compression_composite` accepts either a scalar (current behavior — uniform
+damping) or a `dict` mapping material keys/aliases to per-material b
+values. For composite cores the effective multiplier is the **mass-weighted
+average** of the two regions' b values. The preset
+`fissionyield.SERBER_B` ships the Cochran/Serber values above.
+
+```python
+from fissionyield import SERBER_B, yield_kt_composite, compression_composite, fit_eta, get_test
+
+# 4.2 kg Pu + 6.8 kg HEU at eta=5: b_eff = (4.2 * 1.0 + 6.8 * 0.5) / 11 = 0.691
+Y = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                       correction_factor=SERBER_B)  # ~532 kt vs 770 rigorous
+
+# Fit-eta shifts upward for HEU-containing composites:
+fit_eta(get_test("RDS-4"))                              # 2.343
+fit_eta(get_test("RDS-4"), correction_factor=SERBER_B)  # 2.495
+fit_eta(get_test("Fat Man"))                            # 3.021 (pure Pu)
+fit_eta(get_test("Fat Man"), correction_factor=SERBER_B) # 3.021 (unchanged, b_Pu=1)
+```
+
+The CLI exposes this via a `--serber-b` flag on `solve-composite`,
+`plot-composite`, and `historical`. The flag is mutually exclusive with
+`--correction-factor`.
+
+```
+fissionyield historical --serber-b
+fissionyield solve-composite --pu-mass 4.2 --shell-mass 6.8 --yield 28 --serber-b
+fissionyield plot-composite --pu-range 0.1 5 --fixed-shell 0 4 \
+    --fixed-compression 3 5 --serber-b
+```
+
 ### CLI for composite pits
 
 Two subcommands, parallel to the single-material `solve` / `plot`. The Pu
@@ -312,4 +357,9 @@ pytest
 - T.B. Cochran and C.E. Paine, *The Amount of Plutonium and
   Highly-Enriched Uranium Needed for Pure Fission Nuclear Weapons*,
   NRDC, revised 13 April 1995.
-- R. Serber, *The Los Alamos Primer* (1992), pp. 38–43.
+- R. Serber, *The Los Alamos Primer* (1992), LA-1, pp. 22–28 (Sec. 10
+  bare critical radius, Sec. 11 tamper, Sec. 13 efficiency).
+- B.C. Reed, *A toy model for the yield of a tamped fission bomb*,
+  Am. J. Phys. 86(2), 105–109 (2018).
+- B.C. Reed, *Composite cores and tamper yield*, Am. J. Phys. 88(2),
+  108–114 (2020).
