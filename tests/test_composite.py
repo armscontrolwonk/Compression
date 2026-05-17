@@ -355,3 +355,61 @@ def test_historical_fit_eta(label, m_pu, m_heu, Y_obs, eta_expected):
     assert eta_fit == pytest.approx(eta_expected, rel=0.01), (
         f"{label}: expected eta~{eta_expected}, got {eta_fit:.3f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Same-material structural sanity: a composite with both regions the same
+# material must reproduce the bare-sphere single-material result. This is
+# the genuine apples-to-apples test (not the special-case mass=0 dispatch),
+# and exercises the full two-region eigenvalue solve.
+#
+# Residual is due to the small rounding inconsistency in Cochran Table 3.1
+# (his tabulated M_c, R_c, rho do not exactly satisfy M_c = (4/3) pi R_c^3 rho
+# at the 3-decimal precision he reports). The structural reduction is exact
+# in the math.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "material,M,eta",
+    [
+        ("delta-WGPu", 6.0, 2.5),
+        ("delta-WGPu", 6.0, 3.0),
+        ("delta-WGPu", 6.1, 3.0),
+        ("delta-WGPu", 10.0, 2.5),
+        ("WGU", 20.0, 2.5),
+        ("WGU", 20.0, 3.0),
+        ("WGU", 60.0, 2.0),
+        ("alpha-WGPu", 5.0, 3.0),
+    ],
+)
+def test_same_material_composite_matches_single(material, M, eta):
+    """Pu/Pu and HEU/HEU composites at total mass M must give the same yield
+    as a single-material sphere of mass M (Cochran eq. 6.49) to within ~1%."""
+    Y_single = yield_kt(M, eta, material, model="6.49")
+    Y_comp = yield_kt_composite(M / 2, M / 2, eta, material, material)
+    if Y_single > 0:
+        rel = abs(Y_comp - Y_single) / Y_single
+        assert rel < 0.01, f"{material} M={M} eta={eta}: rel={rel:.4%}"
+    else:
+        assert Y_comp == 0.0
+
+
+def test_fat_man_pu_pu_composite_consistency():
+    """6.1 kg Pu yielding 20 kt: the fit eta should be the same whether
+    treated as a bare sphere or as a 3.05+3.05 Pu/Pu composite."""
+    eta_single = compression(6.1, 20.0, "delta-WGPu", model="6.49")
+    eta_comp = compression_composite(
+        3.05, 3.05, 20.0, "delta-WGPu", "delta-WGPu"
+    )
+    assert eta_comp == pytest.approx(eta_single, rel=0.001)
+    # And both should sit in Cochran's nominal Fat Man window (2 < eta < 4).
+    assert 2.0 < eta_single < 4.0
+    assert 2.0 < eta_comp < 4.0
+
+
+def test_same_material_critical_mass_matches():
+    """f=0.5 Pu/Pu critical mass at eta=1 == bare Pu critical mass."""
+    pu = get_material("delta-WGPu")
+    M_c_comp = critical_mass_composite(0.5, 1.0, pu, pu)
+    assert M_c_comp == pytest.approx(pu.M0, rel=0.01)
