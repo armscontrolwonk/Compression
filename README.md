@@ -227,6 +227,60 @@ Y_damped = yield_kt_composite(
 )  # ~28 kt at user-supplied eta=5
 ```
 
+### CLI for composite pits
+
+Two subcommands, parallel to the single-material `solve` / `plot`. The Pu
+material always sits inside; the shell material always outside.
+
+`solve-composite` takes three of {Pu mass, shell mass, compression, yield}
+and computes the fourth. Back-solving for either mass given the other inputs
+is not implemented (the composite has two mass degrees of freedom; use
+`solve` for that on the single-material side).
+
+```
+# Forward: RDS-4 configuration at eta=5
+fissionyield solve-composite --pu-mass 4.2 --shell-mass 6.8 --compression 5
+
+# Inverse: what eta does the model assign to the observed RDS-4 yield?
+fissionyield solve-composite --pu-mass 4.2 --shell-mass 6.8 --yield 28
+```
+
+`plot-composite` sweeps one of {Pu mass, shell mass, compression} as the
+x-axis, with the remaining parameters either fixed (single value) or drawing
+multiple curves (list of values).
+
+```
+# Yield vs Pu mass at eta=4 for several HEU shell masses
+fissionyield plot-composite \
+    --pu-range 0.1 5 \
+    --fixed-shell 0 2 4 8 \
+    --fixed-compression 4 \
+    -o composite_shells.png
+
+# Yield vs Pu mass with a 4 kg HEU shell across compression levels
+fissionyield plot-composite \
+    --pu-range 0.1 5 \
+    --fixed-shell 4 \
+    --fixed-compression 2 3 4 5 \
+    -o composite_etas.png
+
+# Yield vs compression for a few core/shell choices
+fissionyield plot-composite --vs compression \
+    --compression-range 1.5 6 \
+    --fixed-pu 1 2 4 \
+    --fixed-shell 4 \
+    -o composite_eta_sweep.png
+
+# Path-2 damping for ad-hoc calibration
+fissionyield plot-composite \
+    --pu-range 0.1 5 --fixed-shell 4 --fixed-compression 5 \
+    --correction-factor 0.3
+```
+
+Default materials are `delta-WGPu` for the core and `WGU` (93.5% U-235) for
+the shell; override with `--pu-material` / `--shell-material` if you want a
+different fissile in either region.
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with
