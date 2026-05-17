@@ -86,6 +86,30 @@ _ANCHORS: tuple[HistoricalTest, ...] = (
         ),
     ),
     HistoricalTest(
+        name="SANDSTONE X-Ray",
+        year=1948,
+        country="USA",
+        pu_kg=2.38,
+        heu_kg=4.77,
+        yield_kt=37.0,
+        notes=(
+            "First US composite-core test (14 April 1948, Eniwetok); "
+            "levitated composite core in a MK III HE assembly. Yield is "
+            "well-attested; mass split is Hansen's derivation from "
+            "declassified efficiency figures (35% Pu, 25% HEU utilization) "
+            "and the documented 2:1 HEU:Pu mass ratio (per the September "
+            "1945 LASL design target), solving "
+            "0.35*M_Pu*20 + 0.25*M_HEU*17 = 37 with M_HEU = 2*M_Pu. "
+            "Tamper thickness varied between the three SANDSTONE shots; "
+            "not modeled here."
+        ),
+        source=(
+            "Chuck Hansen, *Swords of Armageddon*, Vol II pp. 102-105 "
+            "(mass derivation in footnote 251); yield from Hewlett & "
+            "Duncan, *Atomic Shield*, Appendix 4."
+        ),
+    ),
+    HistoricalTest(
         name="RDS-4",
         year=1953,
         country="USSR",

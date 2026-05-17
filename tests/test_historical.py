@@ -14,9 +14,10 @@ from fissionyield import (
 
 def test_anchors_nonempty():
     ts = anchors()
-    assert len(ts) >= 4
+    assert len(ts) >= 5
     names = {t.name for t in ts}
-    assert {"Fat Man", "RDS-4", "Low Tony", "CHIC-12"}.issubset(names)
+    assert {"Fat Man", "SANDSTONE X-Ray", "RDS-4",
+            "Low Tony", "CHIC-12"}.issubset(names)
 
 
 def test_composite_only_filters_correctly():
@@ -58,10 +59,11 @@ def test_fat_man_fit_eta_matches_single_material():
     "name,eta_expected",
     [
         # Default Serber-b calibration.
-        ("Fat Man",  3.021),  # pure Pu, unchanged vs rigorous
-        ("RDS-4",    2.495),
-        ("Low Tony", 4.209),
-        ("CHIC-12",  5.466),
+        ("Fat Man",          3.021),  # pure Pu, unchanged vs rigorous
+        ("SANDSTONE X-Ray",  3.633),  # US 1948 composite
+        ("RDS-4",            2.495),
+        ("Low Tony",         4.209),
+        ("CHIC-12",          5.466),
     ],
 )
 def test_fit_eta_anchors_match_documented(name, eta_expected):
