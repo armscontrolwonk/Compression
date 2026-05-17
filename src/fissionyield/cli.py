@@ -337,6 +337,69 @@ def _add_historical(sub: argparse._SubParsersAction) -> None:
     )
 
 
+def _add_plot_historical(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "plot-historical",
+        help=(
+            "Plot fit-eta versus year for the registered historical anchors. "
+            "Markers colored by country, sized by yield."
+        ),
+    )
+    p.add_argument(
+        "--pu-material",
+        default="delta-WGPu",
+        help="Inner (Pu) material assumed in the fit (default: delta-WGPu)",
+    )
+    p.add_argument(
+        "--shell-material",
+        default="WGU",
+        help="Outer shell material assumed in the fit (default: WGU)",
+    )
+    p.add_argument(
+        "--correction-factor",
+        type=float,
+        default=1.0,
+        help="Path-2 empirical damping (default 1.0)",
+    )
+    p.add_argument(
+        "--rigorous",
+        action="store_true",
+        help=(
+            "Use the rigorous one-group yield (no calibration). Default "
+            "applies the Serber/Cochran per-material b calibration."
+        ),
+    )
+    p.add_argument(
+        "--composite-only",
+        action="store_true",
+        help="Plot only composite-core tests.",
+    )
+    p.add_argument(
+        "--exclude-boosted",
+        action="store_true",
+        help="Exclude tests flagged as fusion-boosted.",
+    )
+    p.add_argument(
+        "--include-undated",
+        action="store_true",
+        help=(
+            "Include tests with year=0 (unknown). By default they are "
+            "filtered with a notice."
+        ),
+    )
+    p.add_argument(
+        "--no-labels",
+        action="store_true",
+        help="Suppress per-marker test-name labels.",
+    )
+    p.add_argument(
+        "-o",
+        "--output",
+        help="Save figure to file instead of opening a window.",
+    )
+    p.add_argument("--title", help="Override plot title.")
+
+
 def _do_list() -> int:
     print(f"{'KEY':14}  {'NAME':28}  {'M0 (kg)':>8}  {'R0 (cm)':>8}  "
           f"{'alpha_inf':>9}  {'(R0*a)^2':>9}  {'rho':>6}")
@@ -778,6 +841,160 @@ def _do_historical(args: argparse.Namespace) -> int:
     return 0
 
 
+# Country color palette for plot-historical. Conventional flag-ish hues
+# but deliberately desaturated so labels stay readable on top of markers.
+_COUNTRY_COLORS = {
+    "USA":  "#1f4e79",  # navy blue
+    "USSR": "#c0504d",  # red
+    "UK":   "#7030a0",  # purple
+    "PRC":  "#e6b800",  # yellow
+    "FR":   "#76608a",  # lavender
+}
+_DEFAULT_COLOR = "#666666"
+
+
+def _do_plot_historical(args: argparse.Namespace) -> int:
+    import math
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    calibration = _resolve_calibration(args)
+    correction = _resolve_correction_factor_scalar(args)
+
+    tests = anchors()
+    if args.composite_only:
+        tests = tuple(t for t in tests if t.is_composite)
+    if args.exclude_boosted:
+        tests = tuple(t for t in tests if not t.boosted)
+
+    dated = [t for t in tests if t.year > 0]
+    undated = [t for t in tests if t.year <= 0]
+    if undated and not args.include_undated:
+        for t in undated:
+            print(
+                f"note: {t.name} has no year recorded; excluded from plot "
+                f"(use --include-undated to override)",
+                file=sys.stderr,
+            )
+        tests = tuple(dated)
+
+    if not tests:
+        print("error: no tests to plot", file=sys.stderr)
+        return 2
+
+    rows = []
+    for t in tests:
+        try:
+            eta = _fit_eta(
+                t,
+                inner_mat=args.pu_material,
+                outer_mat=args.shell_material,
+                calibration=calibration,
+                correction_factor=correction,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"warn: skipping {t.name} ({exc})", file=sys.stderr)
+            continue
+        # Use a fallback year for undated entries when --include-undated.
+        year = t.year if t.year > 0 else 1975
+        rows.append((t, year, eta))
+
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+
+    # Marker size: scale by log10(yield) so 1-kt and 100-kt are
+    # visibly different but neither dominates.
+    def size_for(Y):
+        return 60.0 + 200.0 * math.log10(max(Y, 0.1) + 1.0)
+
+    seen_countries = []
+    for t, year, eta in rows:
+        color = _COUNTRY_COLORS.get(t.country, _DEFAULT_COLOR)
+        if t.country not in seen_countries:
+            seen_countries.append(t.country)
+        marker = "o" if not t.boosted else "D"  # diamond = boosted
+        edge = "black" if t.country == "PRC" else color
+        ax.scatter(
+            year, eta,
+            s=size_for(t.yield_kt),
+            c=color, edgecolors=edge, linewidths=1.0,
+            marker=marker, zorder=3,
+        )
+
+    if not args.no_labels:
+        # Hand-tune label placement to avoid overlap on the tight cluster.
+        offsets = {
+            "Fat Man": (4, 8),
+            "SANDSTONE X-Ray": (4, 8),
+            "RDS-4": (4, -14),
+            "Low Tony": (4, 8),
+            "CHIC-12": (-10, -18),
+        }
+        for t, year, eta in rows:
+            dx, dy = offsets.get(t.name, (5, 5))
+            yr_label = f"{t.year}" if t.year > 0 else "year?"
+            ax.annotate(
+                f"{t.name} ({yr_label})",
+                (year, eta),
+                xytext=(dx, dy),
+                textcoords="offset points",
+                fontsize=8.5,
+                color=_COUNTRY_COLORS.get(t.country, _DEFAULT_COLOR),
+            )
+
+    # Legend: one entry per country actually shown
+    handles = [
+        plt.Line2D(
+            [], [], marker="o", linestyle="none",
+            markerfacecolor=_COUNTRY_COLORS.get(c, _DEFAULT_COLOR),
+            markeredgecolor=_COUNTRY_COLORS.get(c, _DEFAULT_COLOR),
+            label=c,
+        )
+        for c in seen_countries
+    ]
+    # Add boosted-flag legend entry if any boosted tests are plotted
+    if any(t.boosted for t, _, _ in rows):
+        handles.append(
+            plt.Line2D(
+                [], [], marker="D", linestyle="none",
+                markerfacecolor="#888888", markeredgecolor="black",
+                label="boosted (fit-η is upper bound)",
+            )
+        )
+    if handles:
+        ax.legend(handles=handles, loc="best", fontsize=9)
+
+    ax.set_xlabel("Test year")
+    ax.set_ylabel(r"Fit $\eta$ (effective compression)")
+
+    if args.title is None:
+        if isinstance(calibration, dict):
+            cal_str = "Serber-b default"
+        elif calibration == 1.0:
+            cal_str = "rigorous one-group"
+        else:
+            cal_str = f"calibration={calibration:g}"
+        title = f"Historical anchors: fit-η vs year ({cal_str})"
+        if correction != 1.0:
+            title += f"  [×{correction:g}]"
+    else:
+        title = args.title
+    ax.set_title(title)
+
+    ax.grid(True, alpha=0.3)
+    # X-axis padding
+    years = [year for _, year, _ in rows]
+    ax.set_xlim(min(years) - 3, max(years) + 5)
+    fig.tight_layout()
+
+    if args.output:
+        fig.savefig(args.output, dpi=140)
+        print(f"wrote {args.output}")
+    else:
+        plt.show()
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fissionyield",
@@ -794,6 +1011,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_solve_composite(sub)
     _add_plot_composite(sub)
     _add_historical(sub)
+    _add_plot_historical(sub)
     _add_list(sub)
 
     args = parser.parse_args(argv)
@@ -809,6 +1027,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_plot_composite(args)
     if args.cmd == "historical":
         return _do_historical(args)
+    if args.cmd == "plot-historical":
+        return _do_plot_historical(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 

@@ -196,6 +196,50 @@ def test_historical_rigorous_lowers_eta(capsys):
     assert "2.343" in out or "2.34" in out  # rigorous RDS-4 fit-eta
 
 
+def test_plot_historical_default(tmp_path, capsys):
+    out_png = tmp_path / "hist.png"
+    rc, _, err = run(
+        ["plot-historical", "-o", str(out_png)],
+        capsys,
+    )
+    assert rc == 0
+    assert out_png.exists()
+    # CHIC-12 has year=0 in the seed library; it should be filtered by default.
+    assert "CHIC-12" in err and "no year recorded" in err
+
+
+def test_plot_historical_include_undated(tmp_path, capsys):
+    out_png = tmp_path / "hist_all.png"
+    rc, _, err = run(
+        ["plot-historical", "--include-undated", "-o", str(out_png)],
+        capsys,
+    )
+    assert rc == 0
+    assert out_png.exists()
+    # No filter notice when including undated entries
+    assert "no year recorded" not in err
+
+
+def test_plot_historical_rigorous(tmp_path, capsys):
+    out_png = tmp_path / "hist_rig.png"
+    rc, _, _ = run(
+        ["plot-historical", "--rigorous", "-o", str(out_png)],
+        capsys,
+    )
+    assert rc == 0
+    assert out_png.exists()
+
+
+def test_plot_historical_composite_only(tmp_path, capsys):
+    out_png = tmp_path / "hist_comp.png"
+    rc, _, _ = run(
+        ["plot-historical", "--composite-only", "-o", str(out_png)],
+        capsys,
+    )
+    assert rc == 0
+    assert out_png.exists()
+
+
 def test_plot_composite_rigorous_flag(tmp_path, capsys):
     out_png = tmp_path / "rigorous.png"
     rc, _, _ = run(

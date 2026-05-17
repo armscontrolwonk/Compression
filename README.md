@@ -207,6 +207,22 @@ pure-fission compression.
 †Low Tony masses are from declassified UK MoD/AWRE Controllable
 Document A/1171 (31 December 1959).
 
+Use `fissionyield historical` to list the table, and
+`fissionyield plot-historical` to render fit-η versus test year
+(markers colored by country, sized by yield, diamond markers for
+boosted designs). The default plot uses the Serber-b calibration;
+pass `--rigorous` for the uncorrected view. CHIC-12 has `year=0`
+in the library (test date not recorded); it is filtered out by
+default with a notice — pass `--include-undated` to place it at a
+placeholder year (1975) for visualization.
+
+```
+fissionyield historical
+fissionyield plot-historical -o trajectory.png
+fissionyield plot-historical --include-undated -o full.png
+fissionyield plot-historical --rigorous -o rigorous.png
+```
+
 The fit-η rises monotonically with test date, mirroring the historical
 progression of implosion sophistication. Bare-sphere one-group theory is
 known to overestimate absolute yields by a factor of ~2–3 at moderate κ
