@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .composite import compression_composite
-from .materials import Material, get_material
+from .materials import SERBER_B, Material, get_material
 
 
 @dataclass(frozen=True)
@@ -154,15 +154,22 @@ def fit_eta(
     test: HistoricalTest | str,
     inner_mat: str | Material = "delta-WGPu",
     outer_mat: str | Material = "WGU",
+    calibration=SERBER_B,
     correction_factor: float = 1.0,
 ) -> float:
-    """Effective compression eta the bare-sphere composite model assigns
-    to ``test`` under the given material assumptions.
+    """Effective compression eta the composite model assigns to ``test``.
 
-    This is the Path-1 interpretation: trust the model's relative
-    predictions, back-fit eta from the observed yield. For pure-Pu or
-    pure-HEU tests one of the masses is zero and the composite formula
-    reduces to Cochran 6.49.
+    Path-1 interpretation: trust the model's relative predictions,
+    back-fit eta from the observed yield. The two layered corrections
+    follow the same convention as yield_kt_composite:
+
+    ``calibration`` -- foundational physics (default SERBER_B per
+    Cochran eq. 6.60 / Primer Sec. 13). Pass ``calibration=1.0`` for
+    the uncorrected rigorous one-group model.
+
+    ``correction_factor`` -- additional empirical scalar multiplier
+    applied on top (default 1.0). Reserve this for data-driven fits
+    against the historical anchor library, not for physics calibration.
     """
     if isinstance(test, str):
         test = get_test(test)
@@ -172,5 +179,6 @@ def fit_eta(
         test.yield_kt,
         inner_mat,
         outer_mat,
+        calibration=calibration,
         correction_factor=correction_factor,
     )

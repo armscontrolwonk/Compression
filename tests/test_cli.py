@@ -46,7 +46,8 @@ def test_solve_composite_forward(capsys):
 
 
 def test_solve_composite_inverse_compression(capsys):
-    """Back-solve eta from observed yield: RDS-4 anchor."""
+    """Back-solve eta from observed yield: RDS-4 anchor under default
+    (Serber-b) calibration."""
     rc, out, err = run(
         [
             "solve-composite",
@@ -57,7 +58,24 @@ def test_solve_composite_inverse_compression(capsys):
         capsys,
     )
     assert rc == 0
-    assert "2.34" in out  # fit eta ~ 2.343
+    assert "2.49" in out  # fit eta ~ 2.495 with Serber-b default
+
+
+def test_solve_composite_rigorous_lowers_eta(capsys):
+    """--rigorous disables Serber-b -> for HEU-containing composites the
+    fit-eta is LOWER than the default."""
+    rc, out, err = run(
+        [
+            "solve-composite",
+            "--pu-mass", "4.2",
+            "--shell-mass", "6.8",
+            "--yield", "28",
+            "--rigorous",
+        ],
+        capsys,
+    )
+    assert rc == 0
+    assert "2.34" in out  # rigorous fit eta ~ 2.343
 
 
 def test_solve_composite_requires_three_of_four(capsys):
@@ -141,55 +159,52 @@ def test_plot_composite_correction_factor(tmp_path, capsys):
     assert out_png.exists()
 
 
-def test_solve_composite_serber_b_lifts_fit_eta(capsys):
-    """--serber-b damps yield -> the model needs higher eta to match the
-    observed yield (compared to the rigorous default)."""
+def test_rigorous_and_correction_factor_stack_independently(capsys):
+    """--rigorous and --correction-factor are independent layers, not
+    mutually exclusive. Both can be set; both apply."""
     rc, out, _ = run(
         [
             "solve-composite",
             "--pu-mass", "4.2",
             "--shell-mass", "6.8",
-            "--yield", "28",
-            "--serber-b",
+            "--compression", "5",
+            "--rigorous",
+            "--correction-factor", "0.5",
         ],
         capsys,
     )
     assert rc == 0
-    assert "2.49" in out  # vs 2.34 without --serber-b
+    assert "rigorous" in out
+    assert "correction factor: 0.5" in out
 
 
-def test_serber_b_and_correction_factor_mutually_exclusive(capsys):
-    with pytest.raises(SystemExit):
-        run(
-            [
-                "solve-composite",
-                "--pu-mass", "4.2",
-                "--shell-mass", "6.8",
-                "--yield", "28",
-                "--serber-b",
-                "--correction-factor", "0.5",
-            ],
-            capsys,
-        )
-
-
-def test_historical_serber_b(capsys):
-    rc, out, _ = run(["historical", "--serber-b"], capsys)
+def test_historical_default_uses_serber(capsys):
+    """The default `historical` listing uses Serber-b; RDS-4 fit-eta is
+    the Serber-calibrated value, not the rigorous one."""
+    rc, out, _ = run(["historical", "--exclude-boosted"], capsys)
     assert rc == 0
-    assert "Serber" in out
-    # Pu-only Fat Man should be unchanged (b_Pu = 1.0)
-    assert "3.021" in out
+    assert "2.495" in out or "2.49" in out  # Serber-default RDS-4 fit-eta
+    assert "3.021" in out  # Fat Man unchanged
 
 
-def test_plot_composite_serber_b(tmp_path, capsys):
-    out_png = tmp_path / "serber.png"
+def test_historical_rigorous_lowers_eta(capsys):
+    """--rigorous in the historical listing recovers the lower fit-eta
+    for HEU-containing composites."""
+    rc, out, _ = run(["historical", "--exclude-boosted", "--rigorous"], capsys)
+    assert rc == 0
+    assert "rigorous" in out
+    assert "2.343" in out or "2.34" in out  # rigorous RDS-4 fit-eta
+
+
+def test_plot_composite_rigorous_flag(tmp_path, capsys):
+    out_png = tmp_path / "rigorous.png"
     rc, _, _ = run(
         [
             "plot-composite",
             "--pu-range", "0.1", "3",
             "--fixed-shell", "4",
             "--fixed-compression", "3", "5",
-            "--serber-b",
+            "--rigorous",
             "-n", "30",
             "-o", str(out_png),
         ],

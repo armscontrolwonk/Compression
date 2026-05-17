@@ -44,13 +44,31 @@ import math
 
 from scipy.optimize import brentq
 
-from .materials import Material, get_material
+from .materials import SERBER_B, Material, get_material
 from .model import KT_PER_RAW, yield_kt as _yield_kt_single
 
-# A correction_factor value: either a scalar applied uniformly to the
-# yield, or a dict mapping Material.key (or alias) to a per-material b
-# value, mass-weighted for composites. See materials.SERBER_B.
-CorrectionFactor = float | dict[str, float]
+# A calibration value: either a scalar applied uniformly to the yield,
+# or a dict mapping Material.key (or alias) to a per-material b value,
+# mass-weighted for composites. See materials.SERBER_B.
+#
+# Two distinct correction concepts are layered in this module:
+#
+#   * calibration       -- foundational physics calibration of the
+#                          bare-sphere one-group model (e.g., Serber's
+#                          K ~ 1/4 to 1/2 vs the rigorous K ~ 1.1).
+#                          Default is SERBER_B (per-material b values
+#                          from Cochran eq. 6.60 / Primer Sec. 13).
+#                          Pass calibration=1.0 to recover the
+#                          uncorrected rigorous result.
+#
+#   * correction_factor -- additional empirical/data-driven scalar
+#                          multiplier applied AFTER the physics
+#                          calibration. Default 1.0. Use this for
+#                          ad-hoc fits to observed test yields without
+#                          touching the foundational physics.
+#
+# Final yield = correction_factor * (mass-weighted calibration) * Y_rigorous.
+Calibration = float | dict[str, float]
 
 _KG_TO_G = 1000.0
 
@@ -66,33 +84,32 @@ def _resolve_b(mapping: dict[str, float], mat: Material) -> float:
     return 1.0
 
 
-def _effective_correction(
-    correction_factor: CorrectionFactor,
+def _effective_calibration(
+    calibration: Calibration,
     mass_inner_kg: float,
     mass_outer_kg: float,
     inner_mat: Material,
     outer_mat: Material,
 ) -> float:
-    """Reduce a correction_factor (scalar or dict) to a single scalar
-    multiplier, mass-weighting across the two regions if the input is
-    a per-material dict."""
-    if not isinstance(correction_factor, dict):
-        if correction_factor <= 0:
-            raise ValueError("correction_factor must be positive")
-        return float(correction_factor)
+    """Reduce a calibration (scalar or dict) to a single scalar multiplier,
+    mass-weighting across the two regions if the input is a per-material dict."""
+    if not isinstance(calibration, dict):
+        if calibration <= 0:
+            raise ValueError("calibration must be positive")
+        return float(calibration)
     total = mass_inner_kg + mass_outer_kg
     if total <= 0:
         return 1.0
     if mass_inner_kg == 0:
-        b = _resolve_b(correction_factor, outer_mat)
+        b = _resolve_b(calibration, outer_mat)
     elif mass_outer_kg == 0:
-        b = _resolve_b(correction_factor, inner_mat)
+        b = _resolve_b(calibration, inner_mat)
     else:
-        b_in = _resolve_b(correction_factor, inner_mat)
-        b_out = _resolve_b(correction_factor, outer_mat)
+        b_in = _resolve_b(calibration, inner_mat)
+        b_out = _resolve_b(calibration, outer_mat)
         b = (mass_inner_kg * b_in + mass_outer_kg * b_out) / total
     if b <= 0:
-        raise ValueError("per-material correction factors must be positive")
+        raise ValueError("per-material calibration values must be positive")
     return b
 
 
@@ -327,23 +344,32 @@ def yield_kt_composite(
     eta: float,
     inner_mat: str | Material,
     outer_mat: str | Material,
-    correction_factor: CorrectionFactor = 1.0,
+    calibration: Calibration = SERBER_B,
+    correction_factor: float = 1.0,
 ) -> float:
     """Composite-core yield in kilotons.
 
     Uses Cochran's hydrodynamic formula with alpha from the two-region
     eigenvalue solve. Reduces exactly to yield_kt(..., model='6.49')
-    in the single-material limit (one mass set to zero).
+    in the single-material limit when ``calibration=1.0`` and
+    ``correction_factor=1.0``.
 
-    correction_factor multiplies the final yield. Default 1.0 gives the
-    rigorous one-group prediction. Values < 1 model the well-documented
-    overestimate of bare-sphere theory at high kappa.
+    Two layered corrections to the rigorous bare-sphere prediction:
 
-    Accepts either a scalar (applied uniformly) or a dict mapping
-    Material.key (or alias) to a per-material b value. For composite
-    cores with a dict the effective multiplier is the mass-weighted
-    average of the two materials' b values, matching Cochran eq. 6.60 /
-    Serber Primer Sec. 13. See materials.SERBER_B for the preset.
+    ``calibration`` : foundational physics calibration. Default is the
+        Serber/Cochran SERBER_B preset (Primer Sec. 13, Cochran eq. 6.60):
+        b = 1.0 for WGPu, 0.8 for U-233, 0.5 for HEU. Mass-weighted for
+        composites. Accepts a scalar (applied uniformly) or a dict
+        mapping Material.key (or alias) to a per-material b value.
+        Pass ``calibration=1.0`` to recover the uncorrected rigorous one-
+        group prediction.
+
+    ``correction_factor`` : additional empirical/data-driven scalar
+        multiplier applied AFTER the physics calibration. Default 1.0.
+        Reserve this for ad-hoc fits to observed test yields without
+        modifying the foundational physics.
+
+    Final yield = correction_factor * (mass-weighted calibration) * Y_rigorous.
     """
     inner = get_material(inner_mat)
     outer = get_material(outer_mat)
@@ -351,16 +377,23 @@ def yield_kt_composite(
         raise ValueError("masses must be non-negative")
     if eta <= 0:
         raise ValueError("compression must be positive")
+    if correction_factor <= 0:
+        raise ValueError("correction_factor must be positive")
     M_total = mass_inner_kg + mass_outer_kg
     if M_total == 0:
         return 0.0
-    cf_eff = _effective_correction(
-        correction_factor, mass_inner_kg, mass_outer_kg, inner, outer
+    cal_eff = _effective_calibration(
+        calibration, mass_inner_kg, mass_outer_kg, inner, outer
     )
+    total_factor = correction_factor * cal_eff
     if mass_inner_kg == 0:
-        return cf_eff * _yield_kt_single(mass_outer_kg, eta, outer, model="6.49")
+        return total_factor * _yield_kt_single(
+            mass_outer_kg, eta, outer, model="6.49"
+        )
     if mass_outer_kg == 0:
-        return cf_eff * _yield_kt_single(mass_inner_kg, eta, inner, model="6.49")
+        return total_factor * _yield_kt_single(
+            mass_inner_kg, eta, inner, model="6.49"
+        )
 
     eta_c = critical_compression(mass_inner_kg, mass_outer_kg, inner, outer)
     if eta <= eta_c:
@@ -376,7 +409,7 @@ def yield_kt_composite(
     V_over_dV = 1.0 / (1.0 - (R2_init / R2_crit) ** 3)
 
     Y_raw = 0.9 * M_total * (delta_R * alpha) ** 2 * V_over_dV
-    return cf_eff * KT_PER_RAW * Y_raw
+    return total_factor * KT_PER_RAW * Y_raw
 
 
 def compression_composite(
@@ -385,21 +418,23 @@ def compression_composite(
     Y_kt: float,
     inner_mat: str | Material,
     outer_mat: str | Material,
-    correction_factor: CorrectionFactor = 1.0,
+    calibration: Calibration = SERBER_B,
+    correction_factor: float = 1.0,
 ) -> float:
     """Compression eta consistent with an observed yield Y_kt for the given
     composite masses.
 
     Inverts yield_kt_composite. Useful for inferring effective compression
-    from historical test data (the "Path 1" calibration described in the
-    README): given the configuration and observed yield, returns the eta
-    the model assigns to that test.
+    from historical test data (the "Path 1" calibration in the README):
+    given the configuration and observed yield, returns the eta the
+    model assigns to that test.
 
     Below criticality (Y_kt = 0) returns the critical compression eta_c.
 
-    correction_factor accepts the same scalar-or-dict form as
-    yield_kt_composite; mass-weighting for composites is applied
-    consistently in the inverse.
+    ``calibration`` and ``correction_factor`` have the same meaning and
+    defaults as in yield_kt_composite: the foundational physics
+    calibration (default SERBER_B) and an additional empirical multiplier
+    (default 1.0) are applied in that order.
     """
     inner = get_material(inner_mat)
     outer = get_material(outer_mat)
@@ -407,17 +442,20 @@ def compression_composite(
         raise ValueError("masses must be non-negative")
     if Y_kt < 0:
         raise ValueError("yield must be non-negative")
+    if correction_factor <= 0:
+        raise ValueError("correction_factor must be positive")
     if mass_inner_kg + mass_outer_kg <= 0:
         raise ValueError("at least one mass must be positive")
-    cf_eff = _effective_correction(
-        correction_factor, mass_inner_kg, mass_outer_kg, inner, outer
+    cal_eff = _effective_calibration(
+        calibration, mass_inner_kg, mass_outer_kg, inner, outer
     )
+    total_factor = correction_factor * cal_eff
 
     # Single-material reductions: delegate to the existing 6.49 inverse,
-    # adjusting the target yield for the (already mass-resolved) factor.
+    # adjusting the target yield for the combined multiplier.
     from .model import compression as _compression_single
 
-    Y_target = Y_kt / cf_eff
+    Y_target = Y_kt / total_factor
     if mass_inner_kg == 0:
         if Y_target == 0:
             return math.sqrt(outer.M0 / mass_outer_kg)
@@ -439,6 +477,7 @@ def compression_composite(
                 e,
                 inner,
                 outer,
+                calibration=calibration,
                 correction_factor=correction_factor,
             )
             - Y_kt
@@ -455,7 +494,6 @@ def compression_composite(
     else:
         raise RuntimeError(
             f"Could not bracket compression for Y={Y_kt} kt "
-            f"(M_in={mass_inner_kg}, M_out={mass_outer_kg}, "
-            f"correction_factor={correction_factor})"
+            f"(M_in={mass_inner_kg}, M_out={mass_outer_kg})"
         )
     return brentq(F, lo, hi, xtol=1e-9, rtol=1e-12)

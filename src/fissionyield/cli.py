@@ -18,15 +18,14 @@ from .materials import MATERIALS, SERBER_B, get_material
 from .model import MODELS, compression, kappa, mass_kg, yield_kt
 
 
-def _resolve_correction_factor(args: argparse.Namespace):
-    """Pick correction_factor for composite calls based on CLI flags."""
-    if getattr(args, "serber_b", False):
-        if args.correction_factor != 1.0:
-            raise SystemExit(
-                "error: --serber-b and --correction-factor are mutually exclusive"
-            )
-        return SERBER_B
-    return args.correction_factor
+def _resolve_calibration(args: argparse.Namespace):
+    """Foundational physics calibration: SERBER_B by default, 1.0 if --rigorous."""
+    return 1.0 if getattr(args, "rigorous", False) else SERBER_B
+
+
+def _resolve_correction_factor_scalar(args: argparse.Namespace) -> float:
+    """Empirical correction multiplier applied on top of the physics calibration."""
+    return float(getattr(args, "correction_factor", 1.0))
 
 
 def _add_solve(sub: argparse._SubParsersAction) -> None:
@@ -202,13 +201,13 @@ def _add_plot_composite(sub: argparse._SubParsersAction) -> None:
         help="Path-2 yield damping (default 1.0, i.e., rigorous one-group)",
     )
     p.add_argument(
-        "--serber-b",
+        "--rigorous",
         action="store_true",
         help=(
-            "Apply Cochran/Serber per-material b calibration (Primer Sec. 13, "
-            "Cochran eq. 6.60): b=1.0 for WGPu, 0.8 for U-233, 0.5 for HEU; "
-            "mass-weighted for composites. Mutually exclusive with "
-            "--correction-factor."
+            "Use the rigorous one-group yield (no calibration). Default is "
+            "the Serber/Cochran per-material b calibration (b=1.0 WGPu, "
+            "0.8 U-233, 0.5 HEU; mass-weighted for composites). Mutually "
+            "exclusive with --correction-factor."
         ),
     )
     p.add_argument(
@@ -281,13 +280,13 @@ def _add_solve_composite(sub: argparse._SubParsersAction) -> None:
         help="Path-2 yield damping (default 1.0)",
     )
     p.add_argument(
-        "--serber-b",
+        "--rigorous",
         action="store_true",
         help=(
-            "Apply Cochran/Serber per-material b calibration (Primer Sec. 13, "
-            "Cochran eq. 6.60): b=1.0 for WGPu, 0.8 for U-233, 0.5 for HEU; "
-            "mass-weighted for composites. Mutually exclusive with "
-            "--correction-factor."
+            "Use the rigorous one-group yield (no calibration). Default is "
+            "the Serber/Cochran per-material b calibration (b=1.0 WGPu, "
+            "0.8 U-233, 0.5 HEU; mass-weighted for composites). Mutually "
+            "exclusive with --correction-factor."
         ),
     )
 
@@ -318,10 +317,11 @@ def _add_historical(sub: argparse._SubParsersAction) -> None:
         help="Path-2 damping applied during the fit (default 1.0)",
     )
     p.add_argument(
-        "--serber-b",
+        "--rigorous",
         action="store_true",
         help=(
-            "Apply Cochran/Serber per-material b calibration during the fit. "
+            "Use the rigorous one-group yield (no calibration) for the fit. "
+            "Default applies the Serber/Cochran per-material b calibration. "
             "Mutually exclusive with --correction-factor."
         ),
     )
@@ -464,21 +464,25 @@ def _safe_yield(m: float, eta: float, mat, model: str) -> float:
 
 
 def _safe_yield_composite(
-    m_pu: float, m_shell: float, eta: float, pu_mat, shell_mat, cf: float
+    m_pu: float, m_shell: float, eta: float, pu_mat, shell_mat,
+    calibration, correction_factor: float
 ) -> float:
     if m_pu < 0 or m_shell < 0 or eta <= 0:
         return float("nan")
     if m_pu == 0 and m_shell == 0:
         return 0.0
     return yield_kt_composite(
-        m_pu, m_shell, eta, pu_mat, shell_mat, correction_factor=cf
+        m_pu, m_shell, eta, pu_mat, shell_mat,
+        calibration=calibration,
+        correction_factor=correction_factor,
     )
 
 
 def _do_plot_composite(args: argparse.Namespace) -> int:
     import matplotlib.pyplot as plt
 
-    correction = _resolve_correction_factor(args)
+    calibration = _resolve_calibration(args)
+    correction = _resolve_correction_factor_scalar(args)
     pu_mat = get_material(args.pu_material)
     shell_mat = get_material(args.shell_material)
     fig, ax = plt.subplots(figsize=(8, 5.5))
@@ -532,7 +536,8 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
             for eta in etas:
                 ys = np.array([
                     _safe_yield_composite(
-                        x, m_shell, eta, pu_mat, shell_mat, correction
+                        x, m_shell, eta, pu_mat, shell_mat,
+                        calibration, correction,
                     )
                     for x in xs
                 ])
@@ -571,7 +576,8 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
             for eta in etas:
                 ys = np.array([
                     _safe_yield_composite(
-                        m_pu, x, eta, pu_mat, shell_mat, correction
+                        m_pu, x, eta, pu_mat, shell_mat,
+                        calibration, correction,
                     )
                     for x in xs
                 ])
@@ -607,7 +613,8 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
             for m_shell in shells:
                 ys = np.array([
                     _safe_yield_composite(
-                        m_pu, m_shell, x, pu_mat, shell_mat, correction
+                        m_pu, m_shell, x, pu_mat, shell_mat,
+                        calibration, correction,
                     )
                     for x in xs
                 ])
@@ -641,11 +648,12 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
         ax.set_ylim(bottom=args.ymin)
     if args.xlog:
         ax.set_xscale("log")
-    suffix = ""
-    if isinstance(correction, dict):
-        suffix = "  [Serber b]"
-    elif correction != 1.0:
-        suffix = f"  [correction x{correction:g}]"
+    annotations = []
+    if not isinstance(calibration, dict) and calibration == 1.0:
+        annotations.append("rigorous")
+    if correction != 1.0:
+        annotations.append(f"correction x{correction:g}")
+    suffix = f"  [{', '.join(annotations)}]" if annotations else ""
     ax.set_title(args.title or (title_default + suffix))
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(loc="best")
@@ -676,19 +684,22 @@ def _do_solve_composite(args: argparse.Namespace) -> int:
 
     pu_mat = get_material(args.pu_material)
     shell_mat = get_material(args.shell_material)
-    cf = _resolve_correction_factor(args)
+    calibration = _resolve_calibration(args)
+    correction = _resolve_correction_factor_scalar(args)
 
     if args.Y is None:
         Y = yield_kt_composite(
             args.pu_mass, args.shell_mass, args.compression,
-            pu_mat, shell_mat, correction_factor=cf,
+            pu_mat, shell_mat,
+            calibration=calibration, correction_factor=correction,
         )
         unknown = ("yield", f"{Y:.4g} kt")
         m_pu, m_shell, eta = args.pu_mass, args.shell_mass, args.compression
     elif args.compression is None:
         eta = compression_composite(
             args.pu_mass, args.shell_mass, args.Y,
-            pu_mat, shell_mat, correction_factor=cf,
+            pu_mat, shell_mat,
+            calibration=calibration, correction_factor=correction,
         )
         unknown = ("compression", f"eta = {eta:.4f}")
         m_pu, m_shell, Y = args.pu_mass, args.shell_mass, args.Y
@@ -711,17 +722,18 @@ def _do_solve_composite(args: argparse.Namespace) -> int:
     print(f"Critical eta_c   : {eta_c:.4f}")
     print(f"Yield Y          : {Y:.4g} kt")
     print(f"  -- solved for: {unknown[0]} = {unknown[1]}")
-    if isinstance(cf, dict):
-        print("correction factor: Serber/Cochran per-material b (mass-weighted)")
-    elif cf != 1.0:
-        print(f"correction factor: {cf:g}")
+    if not isinstance(calibration, dict) and calibration == 1.0:
+        print("calibration      : rigorous one-group (no Serber b correction)")
+    if correction != 1.0:
+        print(f"correction factor: {correction:g}")
     if eta <= eta_c:
         print("note: eta <= eta_c (sub-critical or just critical) -- no yield.")
     return 0
 
 
 def _do_historical(args: argparse.Namespace) -> int:
-    correction = _resolve_correction_factor(args)
+    calibration = _resolve_calibration(args)
+    correction = _resolve_correction_factor_scalar(args)
     tests = anchors()
     if args.composite_only:
         tests = tuple(t for t in tests if t.is_composite)
@@ -732,10 +744,13 @@ def _do_historical(args: argparse.Namespace) -> int:
         f"{'NAME':14}  {'YEAR':>4}  {'CC':2}  {'M_Pu':>6}  {'M_HEU':>6}  "
         f"{'Y (kt)':>8}  {'boost':>5}  {'fit eta':>8}"
     )
-    if isinstance(correction, dict):
-        print("(fit eta computed with Serber/Cochran per-material b calibration)")
-    elif correction != 1.0:
-        print(f"(fit eta computed with correction_factor = {correction:g})")
+    notes = []
+    if not isinstance(calibration, dict) and calibration == 1.0:
+        notes.append("rigorous one-group (no Serber b)")
+    if correction != 1.0:
+        notes.append(f"correction_factor = {correction:g}")
+    if notes:
+        print(f"(fit eta computed with: {', '.join(notes)})")
     print("-" * 70)
     for t in tests:
         try:
@@ -743,6 +758,7 @@ def _do_historical(args: argparse.Namespace) -> int:
                 t,
                 inner_mat=args.pu_material,
                 outer_mat=args.shell_material,
+                calibration=calibration,
                 correction_factor=correction,
             )
             eta_str = f"{eta:8.3f}"

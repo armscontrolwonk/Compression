@@ -34,8 +34,15 @@ from fissionyield.composite import D0, _criticality_F, _radii
     ],
 )
 def test_single_inner_limit_equals_cochran_649(inner_key, outer_key, M, eta):
-    """Mass entirely in the inner region: composite == single (eq 6.49)."""
-    Y_composite = yield_kt_composite(M, 0.0, eta, inner_key, outer_key)
+    """Mass entirely in the inner region: composite == single (eq 6.49).
+
+    Uses calibration=1.0 (rigorous one-group) to compare directly against
+    the uncalibrated Cochran 6.49 formula. With the default Serber-b
+    calibration the composite is additionally damped by b for HEU/U-233
+    in the active slot.
+    """
+    Y_composite = yield_kt_composite(M, 0.0, eta, inner_key, outer_key,
+                                     calibration=1.0)
     Y_cochran = yield_kt(M, eta, inner_key, model="6.49")
     assert Y_composite == pytest.approx(Y_cochran, rel=1e-12)
 
@@ -51,7 +58,8 @@ def test_single_inner_limit_equals_cochran_649(inner_key, outer_key, M, eta):
 )
 def test_single_outer_limit_equals_cochran_649(inner_key, outer_key, M, eta):
     """Mass entirely in the outer region: composite == single (eq 6.49)."""
-    Y_composite = yield_kt_composite(0.0, M, eta, inner_key, outer_key)
+    Y_composite = yield_kt_composite(0.0, M, eta, inner_key, outer_key,
+                                     calibration=1.0)
     Y_cochran = yield_kt(M, eta, outer_key, model="6.49")
     assert Y_composite == pytest.approx(Y_cochran, rel=1e-12)
 
@@ -231,114 +239,19 @@ def test_nonpositive_compression_raises():
 
 
 # ---------------------------------------------------------------------------
-# correction_factor knob (Path 2 escape hatch -- ad-hoc damping)
+# correction_factor (empirical scalar, applied AFTER the physics calibration)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("factor", [0.1, 0.5, 1.0, 2.0])
 def test_correction_factor_scales_yield_linearly(factor):
+    """correction_factor is a uniform scalar multiplier on top of whatever
+    calibration is active (default Serber)."""
     Y_base = yield_kt_composite(3.0, 5.0, 2.5, "delta-WGPu", "WGU")
     Y_scaled = yield_kt_composite(
         3.0, 5.0, 2.5, "delta-WGPu", "WGU", correction_factor=factor
     )
     assert Y_scaled == pytest.approx(factor * Y_base)
-
-
-# ---------------------------------------------------------------------------
-# Material-aware (dict) correction factor: Serber/Cochran b calibration
-# ---------------------------------------------------------------------------
-
-
-def test_correction_factor_dict_pure_pu_uses_pu_b():
-    """In the pure-Pu limit, dict-form correction factor uses the Pu b value
-    (not the outer material's). With SERBER_B and a non-zero outer the
-    mass-weighted result should match the Pu-only case as M_outer -> 0."""
-    from fissionyield import SERBER_B
-
-    Y_pure = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
-    Y_serber = yield_kt_composite(
-        6.1, 0.0, 2.5, "delta-WGPu", "WGU", correction_factor=SERBER_B
-    )
-    # b_Pu = 1.0 -> unchanged
-    assert Y_serber == pytest.approx(Y_pure)
-
-
-def test_correction_factor_dict_pure_heu_uses_heu_b():
-    from fissionyield import SERBER_B
-
-    Y_pure = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU")
-    Y_serber = yield_kt_composite(
-        0.0, 60.0, 2.0, "delta-WGPu", "WGU", correction_factor=SERBER_B
-    )
-    # b_HEU = 0.5 -> half
-    assert Y_serber == pytest.approx(0.5 * Y_pure)
-
-
-def test_correction_factor_dict_composite_mass_weighted():
-    """For RDS-4 (4.2 Pu + 6.8 HEU), the mass-weighted Serber b is
-    (4.2 * 1.0 + 6.8 * 0.5) / 11 = 0.6909..."""
-    from fissionyield import SERBER_B
-
-    Y_base = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU")
-    Y_serber = yield_kt_composite(
-        4.2, 6.8, 5.0, "delta-WGPu", "WGU", correction_factor=SERBER_B
-    )
-    b_expected = (4.2 * 1.0 + 6.8 * 0.5) / 11.0
-    assert Y_serber == pytest.approx(b_expected * Y_base)
-    assert b_expected == pytest.approx(0.6909, rel=1e-3)
-
-
-def test_correction_factor_dict_missing_material_defaults_to_one():
-    """A dict without an entry for the material in use means no correction
-    for that material."""
-    Y_no_corr = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
-    Y_with_unrelated = yield_kt_composite(
-        6.1, 0.0, 2.5, "delta-WGPu", "WGU",
-        correction_factor={"WGU-93.5": 0.5},  # no entry for delta-WGPu
-    )
-    assert Y_with_unrelated == pytest.approx(Y_no_corr)
-
-
-def test_correction_factor_dict_resolves_aliases():
-    """The dict should resolve material aliases (e.g., 'HEU' -> 'WGU-93.5')."""
-    Y_base = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU")
-    Y_alias = yield_kt_composite(
-        0.0, 60.0, 2.0, "delta-WGPu", "WGU",
-        correction_factor={"HEU": 0.5},  # alias for WGU-93.5
-    )
-    assert Y_alias == pytest.approx(0.5 * Y_base)
-
-
-def test_correction_factor_dict_round_trip_through_inverse():
-    """compression_composite must apply the same mass-weighted dict and
-    recover the original eta."""
-    from fissionyield import SERBER_B
-
-    m_pu, m_heu, eta = 4.2, 6.8, 3.0
-    Y = yield_kt_composite(
-        m_pu, m_heu, eta, "delta-WGPu", "WGU", correction_factor=SERBER_B
-    )
-    eta_back = compression_composite(
-        m_pu, m_heu, Y, "delta-WGPu", "WGU", correction_factor=SERBER_B
-    )
-    assert eta_back == pytest.approx(eta, rel=1e-6)
-
-
-def test_serber_b_lifts_fit_eta_for_composites():
-    """Applying Serber b damps the model yield, so to match an observed
-    yield the model needs MORE compression -- fit-eta goes up. Pu-only
-    tests (Fat Man) are unchanged because b_Pu = 1.0."""
-    from fissionyield import SERBER_B, fit_eta, get_test
-
-    # Fat Man: pure Pu (b_eff = 1.0) -> identical
-    eta_pu_default = fit_eta(get_test("Fat Man"))
-    eta_pu_serber = fit_eta(get_test("Fat Man"), correction_factor=SERBER_B)
-    assert eta_pu_serber == pytest.approx(eta_pu_default, rel=1e-9)
-
-    # RDS-4: composite (b_eff ~ 0.69) -> fit eta should rise
-    eta_rds4_default = fit_eta(get_test("RDS-4"))
-    eta_rds4_serber = fit_eta(get_test("RDS-4"), correction_factor=SERBER_B)
-    assert eta_rds4_serber > eta_rds4_default
 
 
 def test_correction_factor_applies_in_single_material_limits():
@@ -354,6 +267,155 @@ def test_correction_factor_bad_inputs():
         yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", correction_factor=0.0)
     with pytest.raises(ValueError):
         yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", correction_factor=-1.0)
+
+
+# ---------------------------------------------------------------------------
+# calibration parameter: foundational physics (Serber-b dict OR scalar)
+# ---------------------------------------------------------------------------
+
+
+def test_calibration_default_is_serber_b():
+    """The default calibration is SERBER_B; passing it explicitly must match."""
+    from fissionyield import SERBER_B
+
+    Y_default = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU")
+    Y_explicit = yield_kt_composite(
+        4.2, 6.8, 5.0, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    assert Y_default == pytest.approx(Y_explicit)
+
+
+def test_calibration_rigorous_recovers_uncorrected():
+    """calibration=1.0 disables the physics calibration; yield equals the
+    rigorous Cochran 6.49 prediction in the single-material limit."""
+    Y_rig = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU",
+                               calibration=1.0)
+    Y_cochran = yield_kt(6.1, 2.5, "delta-WGPu", model="6.49")
+    assert Y_rig == pytest.approx(Y_cochran, rel=1e-12)
+
+
+def test_calibration_dict_pure_pu_uses_pu_b():
+    """Pu-only case: b_Pu = 1.0, default Serber-b is a no-op for pure Pu."""
+    from fissionyield import SERBER_B
+
+    Y_rigorous = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU",
+                                    calibration=1.0)
+    Y_serber = yield_kt_composite(
+        6.1, 0.0, 2.5, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    assert Y_serber == pytest.approx(Y_rigorous)
+
+
+def test_calibration_dict_pure_heu_uses_heu_b():
+    """HEU-only case: b_HEU = 0.5, Serber-b halves the rigorous yield."""
+    from fissionyield import SERBER_B
+
+    Y_rigorous = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU",
+                                    calibration=1.0)
+    Y_serber = yield_kt_composite(
+        0.0, 60.0, 2.0, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    assert Y_serber == pytest.approx(0.5 * Y_rigorous)
+
+
+def test_calibration_dict_composite_mass_weighted():
+    """For RDS-4 (4.2 Pu + 6.8 HEU), the mass-weighted Serber b is
+    (4.2 * 1.0 + 6.8 * 0.5) / 11 = 0.6909..."""
+    from fissionyield import SERBER_B
+
+    Y_rigorous = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                                    calibration=1.0)
+    Y_serber = yield_kt_composite(
+        4.2, 6.8, 5.0, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    b_expected = (4.2 * 1.0 + 6.8 * 0.5) / 11.0
+    assert Y_serber == pytest.approx(b_expected * Y_rigorous)
+    assert b_expected == pytest.approx(0.6909, rel=1e-3)
+
+
+def test_calibration_dict_missing_material_defaults_to_one():
+    """A dict without an entry for the material defaults to 1.0 (no correction)."""
+    Y_rig = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU", calibration=1.0)
+    Y_with_unrelated = yield_kt_composite(
+        6.1, 0.0, 2.5, "delta-WGPu", "WGU",
+        calibration={"WGU-93.5": 0.5},  # no entry for delta-WGPu
+    )
+    assert Y_with_unrelated == pytest.approx(Y_rig)
+
+
+def test_calibration_dict_resolves_aliases():
+    """The dict should resolve material aliases (e.g., 'HEU' -> 'WGU-93.5')."""
+    Y_rig = yield_kt_composite(0.0, 60.0, 2.0, "delta-WGPu", "WGU",
+                               calibration=1.0)
+    Y_alias = yield_kt_composite(
+        0.0, 60.0, 2.0, "delta-WGPu", "WGU",
+        calibration={"HEU": 0.5},  # alias for WGU-93.5
+    )
+    assert Y_alias == pytest.approx(0.5 * Y_rig)
+
+
+def test_calibration_round_trip_through_inverse():
+    """compression_composite must apply the same calibration as the forward
+    and recover the original eta."""
+    from fissionyield import SERBER_B
+
+    m_pu, m_heu, eta = 4.2, 6.8, 3.0
+    Y = yield_kt_composite(
+        m_pu, m_heu, eta, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    eta_back = compression_composite(
+        m_pu, m_heu, Y, "delta-WGPu", "WGU", calibration=SERBER_B
+    )
+    assert eta_back == pytest.approx(eta, rel=1e-6)
+
+
+def test_calibration_bad_inputs():
+    """calibration must be positive (scalar or per-material dict)."""
+    with pytest.raises(ValueError):
+        yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", calibration=0.0)
+    with pytest.raises(ValueError):
+        yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", calibration=-0.5)
+    with pytest.raises(ValueError):
+        yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU",
+                           calibration={"delta-WGPu": -1.0})
+
+
+# ---------------------------------------------------------------------------
+# Layering: calibration and correction_factor are independent and stack
+# ---------------------------------------------------------------------------
+
+
+def test_layered_corrections_stack_multiplicatively():
+    """Y = correction_factor * calibration * Y_rigorous (in that order)."""
+    Y_rigorous = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                                    calibration=1.0, correction_factor=1.0)
+    Y_serber_only = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                                       correction_factor=1.0)
+    Y_correction_only = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                                           calibration=1.0, correction_factor=0.3)
+    Y_both = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                                correction_factor=0.3)
+    b_eff = (4.2 + 6.8 * 0.5) / 11.0
+    assert Y_serber_only == pytest.approx(b_eff * Y_rigorous)
+    assert Y_correction_only == pytest.approx(0.3 * Y_rigorous)
+    assert Y_both == pytest.approx(0.3 * b_eff * Y_rigorous)
+
+
+def test_default_lifts_fit_eta_vs_rigorous():
+    """Default (Serber b) damps yield -> the model needs MORE compression
+    to match an observed yield than the rigorous model does. Pu-only tests
+    are unchanged because b_Pu = 1.0."""
+    from fissionyield import fit_eta, get_test
+
+    # Fat Man: pure Pu, b_eff = 1.0 -> identical
+    eta_pu_serber = fit_eta(get_test("Fat Man"))  # default
+    eta_pu_rigorous = fit_eta(get_test("Fat Man"), calibration=1.0)
+    assert eta_pu_serber == pytest.approx(eta_pu_rigorous, rel=1e-9)
+
+    # RDS-4: composite, b_eff ~ 0.69 -> default Serber needs higher eta
+    eta_rds4_serber = fit_eta(get_test("RDS-4"))  # default
+    eta_rds4_rigorous = fit_eta(get_test("RDS-4"), calibration=1.0)
+    assert eta_rds4_serber > eta_rds4_rigorous
 
 
 # ---------------------------------------------------------------------------
@@ -400,9 +462,12 @@ def test_compression_composite_single_inner_matches_cochran():
 
 
 def test_compression_composite_single_outer_matches_cochran():
+    """With calibration=1.0 (rigorous), the inverse must equal the
+    single-material Cochran 6.49 inverse."""
     m = 30.0
     Y = 2.0
-    eta_comp = compression_composite(0.0, m, Y, "delta-WGPu", "WGU")
+    eta_comp = compression_composite(0.0, m, Y, "delta-WGPu", "WGU",
+                                     calibration=1.0)
     eta_single = compression(m, Y, "WGU", model="6.49")
     assert eta_comp == pytest.approx(eta_single, rel=1e-12)
 
@@ -442,13 +507,15 @@ def test_compression_composite_bad_inputs():
 @pytest.mark.parametrize(
     "name,eta_expected",
     [
-        ("RDS-4",    2.34),
-        ("Low Tony", 4.04),
-        ("CHIC-12",  5.35),
+        # fit-eta values under the default Serber-b calibration
+        ("RDS-4",    2.495),
+        ("Low Tony", 4.209),
+        ("CHIC-12",  5.466),
     ],
 )
 def test_historical_fit_eta(name, eta_expected):
-    """Anchor library composites must back-fit to the documented eta values."""
+    """Anchor library composites back-fit to the documented eta values
+    under the default (Serber-b) calibration."""
     from fissionyield import fit_eta, get_test
 
     eta_fit = fit_eta(get_test(name))
@@ -485,9 +552,12 @@ def test_historical_fit_eta(name, eta_expected):
 )
 def test_same_material_composite_matches_single(material, M, eta):
     """Pu/Pu and HEU/HEU composites at total mass M must give the same yield
-    as a single-material sphere of mass M (Cochran eq. 6.49) to within ~1%."""
+    as a single-material sphere of mass M (Cochran eq. 6.49) to within ~1%
+    when using the rigorous calibration. With the default Serber-b the
+    composite would additionally be damped by b for HEU."""
     Y_single = yield_kt(M, eta, material, model="6.49")
-    Y_comp = yield_kt_composite(M / 2, M / 2, eta, material, material)
+    Y_comp = yield_kt_composite(M / 2, M / 2, eta, material, material,
+                                calibration=1.0)
     if Y_single > 0:
         rel = abs(Y_comp - Y_single) / Y_single
         assert rel < 0.01, f"{material} M={M} eta={eta}: rel={rel:.4%}"

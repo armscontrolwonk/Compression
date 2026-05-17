@@ -191,13 +191,15 @@ This is the "Path 1" interpretation — the model's *relative* predictions
 historical record is taken as the effective compression actually achieved.
 
 Three historical composite-core tests give a coherent picture under this
-interpretation:
+interpretation (fit-η under the default Serber-b calibration; rigorous
+values in parentheses):
 
-| Test          | Pu (kg) | HEU (kg) | Yield (kt) | Fit η  |
-|---------------|--------:|---------:|-----------:|-------:|
-| RDS-4 (1952)  |     4.2 |      6.8 |         28 |  2.3   |
-| Low Tony (1960) |   0.9 |      1.4 |          1 |  4.0   |
-| CHIC-12 (PRC) |     2.0 |      0.5 |         15 |  5.4*  |
+| Test            | Pu (kg) | HEU (kg) | Yield (kt) | Fit η (Serber / rigorous) |
+|-----------------|--------:|---------:|-----------:|---------------------------|
+| Fat Man (1945)  |     6.1 |      0.0 |         20 |  3.02 / 3.02 (pure Pu)    |
+| RDS-4 (1953)    |     4.2 |      6.8 |         28 |  2.50 / 2.34              |
+| Low Tony (1960) |     0.9 |      1.4 |          1 |  4.21 / 4.05              |
+| CHIC-12 (PRC)   |     2.0 |      0.5 |         15 |  5.47 / 5.35*             |
 
 *CHIC-12 may have been boosted; the fit-η is an upper bound on the
 pure-fission compression.
@@ -215,61 +217,80 @@ the yield directly.
 ```python
 from fissionyield import compression_composite, yield_kt_composite
 
-# Fit effective compression to RDS-4 (1952 Soviet composite core)
+# Fit effective compression to RDS-4 (1953 Soviet composite core).
+# Defaults: Serber-b calibration applied (see "Two layered corrections" below).
 eta_fit = compression_composite(
     mass_inner_kg=4.2, mass_outer_kg=6.8, Y_kt=28.0,
     inner_mat="delta-WGPu", outer_mat="WGU",
-)  # ~2.34
-
-# Or apply a Path-2 damping factor and recompute
-Y_damped = yield_kt_composite(
-    4.2, 6.8, 5.0, "delta-WGPu", "WGU", correction_factor=0.04
-)  # ~28 kt at user-supplied eta=5
+)  # ~2.50 (Serber-default); ~2.34 with calibration=1.0
 ```
 
-### Material-aware Path-2 calibration (Serber / Cochran b)
+### Two layered corrections: `calibration` and `correction_factor`
 
-Serber, *Los Alamos Primer* Sec. 13, derives the rigorous yield coefficient
-K ≈ 1.1 and then states "the true value is probably K ≈ ¼ to ½" — i.e.,
-the bare-sphere model overshoots by a factor of roughly 2 because of
-real-world inefficiencies (predetonation, asymmetric implosion, EOS, etc.)
-not captured by one-group diffusion. Cochran adopts this calibration
-explicitly in eq. 6.60 as a per-material `b` coefficient:
+The composite yield is computed as
 
-- **WGPu**: b = 1.0 (no correction relative to the rigorous calc)
+```
+Y = correction_factor · (mass-weighted calibration) · Y_rigorous
+```
+
+— two conceptually distinct corrections, applied in that order:
+
+**`calibration`** — *foundational physics calibration* of the bare-sphere
+one-group model. Default is `fissionyield.SERBER_B`, the per-material
+`b` coefficient from Cochran eq. 6.60 / Serber *Primer* Sec. 13:
+
+- **WGPu**: b = 1.0 (no correction; matches Serber's "rough" K ≈ 1.1)
 - **U-233**: b = 0.8
-- **HEU**: b = 0.5 (Serber's high estimate)
+- **HEU**: b = 0.5 (Serber: "true K probably ¼ to ½")
 
-The `correction_factor` parameter on `yield_kt_composite` and
-`compression_composite` accepts either a scalar (current behavior — uniform
-damping) or a `dict` mapping material keys/aliases to per-material b
-values. For composite cores the effective multiplier is the **mass-weighted
-average** of the two regions' b values. The preset
-`fissionyield.SERBER_B` ships the Cochran/Serber values above.
+For composite cores the multiplier is the mass-weighted average of the
+two regions' b values. Accepts either a `dict` (per-material) or a
+scalar (uniform across both regions). Pass `calibration=1.0` to recover
+the uncorrected rigorous one-group prediction.
+
+**`correction_factor`** — *additional empirical multiplier* applied on
+top of the physics calibration. Always a scalar; default 1.0. Reserve
+this for data-driven fits to observed test yields (e.g., a global
+damping derived from the historical anchor library); it must not be
+used as a substitute for the foundational physics correction.
 
 ```python
-from fissionyield import SERBER_B, yield_kt_composite, compression_composite, fit_eta, get_test
+from fissionyield import SERBER_B, yield_kt_composite, fit_eta, get_test
 
-# 4.2 kg Pu + 6.8 kg HEU at eta=5: b_eff = (4.2 * 1.0 + 6.8 * 0.5) / 11 = 0.691
-Y = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
-                       correction_factor=SERBER_B)  # ~532 kt vs 770 rigorous
+# Default (Serber-b, no empirical damping)
+Y = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU")  # ~532 kt
 
-# Fit-eta shifts upward for HEU-containing composites:
-fit_eta(get_test("RDS-4"))                              # 2.343
-fit_eta(get_test("RDS-4"), correction_factor=SERBER_B)  # 2.495
-fit_eta(get_test("Fat Man"))                            # 3.021 (pure Pu)
-fit_eta(get_test("Fat Man"), correction_factor=SERBER_B) # 3.021 (unchanged, b_Pu=1)
+# Rigorous (no calibration, no empirical damping)
+Y_rig = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                            calibration=1.0)  # ~770 kt
+
+# Custom per-material physics calibration
+Y_custom = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                               calibration={"delta-WGPu": 0.9, "WGU-93.5": 0.4})
+
+# Default Serber-b plus an empirical 0.3x damping on top
+Y_damped = yield_kt_composite(4.2, 6.8, 5.0, "delta-WGPu", "WGU",
+                               correction_factor=0.3)  # ~160 kt
+
+# Fit-eta defaults to Serber-b. Pass calibration=1.0 for the rigorous fit:
+fit_eta(get_test("RDS-4"))                        # 2.495 (Serber default)
+fit_eta(get_test("RDS-4"), calibration=1.0)       # 2.343 (rigorous)
+fit_eta(get_test("Fat Man"))                      # 3.021 (pure Pu, unaffected)
 ```
 
-The CLI exposes this via a `--serber-b` flag on `solve-composite`,
-`plot-composite`, and `historical`. The flag is mutually exclusive with
-`--correction-factor`.
+In the CLI, the calibration layer is controlled by `--rigorous` (off by
+default → Serber-b applied) and the empirical layer by
+`--correction-factor FLOAT` (off by default → 1.0). Both are
+independent: you can combine `--rigorous --correction-factor 0.3` to
+disable Serber-b *and* apply a 0.3× empirical multiplier.
 
 ```
-fissionyield historical --serber-b
-fissionyield solve-composite --pu-mass 4.2 --shell-mass 6.8 --yield 28 --serber-b
+fissionyield historical                                 # Serber-b default
+fissionyield historical --rigorous                      # uncorrected
+fissionyield solve-composite --pu-mass 4.2 --shell-mass 6.8 --yield 28
 fissionyield plot-composite --pu-range 0.1 5 --fixed-shell 0 4 \
-    --fixed-compression 3 5 --serber-b
+    --fixed-compression 3 5
+fissionyield plot-composite ... --rigorous --correction-factor 0.5
 ```
 
 ### CLI for composite pits

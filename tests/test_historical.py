@@ -45,10 +45,11 @@ def test_get_test_unknown_raises():
 
 
 def test_fat_man_fit_eta_matches_single_material():
-    """Fat Man is a pure-Pu test (heu_kg=0). The fit-eta from the historical
-    helper must equal the single-material Cochran 6.49 inverse."""
+    """Fat Man is a pure-Pu test (heu_kg=0; b_Pu=1.0). The fit-eta is the
+    same whether we use the default Serber calibration or rigorous, and
+    matches the single-material Cochran 6.49 inverse."""
     t = get_test("Fat Man")
-    eta_hist = fit_eta(t)
+    eta_hist = fit_eta(t)  # default Serber, b_Pu=1.0 -> no damping
     eta_single = compression(t.pu_kg, t.yield_kt, "delta-WGPu", model="6.49")
     assert eta_hist == pytest.approx(eta_single, rel=1e-9)
 
@@ -56,10 +57,11 @@ def test_fat_man_fit_eta_matches_single_material():
 @pytest.mark.parametrize(
     "name,eta_expected",
     [
-        ("Fat Man",  3.02),
-        ("RDS-4",    2.34),
-        ("Low Tony", 4.04),
-        ("CHIC-12",  5.35),
+        # Default Serber-b calibration.
+        ("Fat Man",  3.021),  # pure Pu, unchanged vs rigorous
+        ("RDS-4",    2.495),
+        ("Low Tony", 4.209),
+        ("CHIC-12",  5.466),
     ],
 )
 def test_fit_eta_anchors_match_documented(name, eta_expected):
@@ -67,14 +69,24 @@ def test_fit_eta_anchors_match_documented(name, eta_expected):
     assert eta == pytest.approx(eta_expected, rel=0.01)
 
 
-def test_fit_eta_correction_factor_lowers_eta():
-    """Applying a correction factor < 1 (Path 2 damping) raises the effective
-    eta needed to explain a given observed yield -- the model has to work
-    harder to compensate for the damping."""
+def test_fit_eta_correction_factor_lifts_eta():
+    """Applying an empirical correction_factor < 1 (data-driven damping)
+    raises the effective eta needed to explain a given observed yield.
+    This is independent of the foundational Serber-b calibration."""
     name = "RDS-4"
-    eta_base = fit_eta(name, correction_factor=1.0)
-    eta_damped = fit_eta(name, correction_factor=0.5)
+    eta_base = fit_eta(name)  # default Serber + correction=1.0
+    eta_damped = fit_eta(name, correction_factor=0.5)  # +50% extra damping
     assert eta_damped > eta_base
+
+
+def test_fit_eta_rigorous_lowers_eta():
+    """Disabling Serber's b lowers the fit-eta because the rigorous model
+    predicts higher yields, so less compression is needed to reach the
+    observed value (for HEU-containing composites)."""
+    name = "RDS-4"
+    eta_default = fit_eta(name)  # Serber default
+    eta_rigorous = fit_eta(name, calibration=1.0)
+    assert eta_rigorous < eta_default
 
 
 def test_total_kg_property():
