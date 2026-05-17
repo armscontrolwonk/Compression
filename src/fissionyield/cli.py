@@ -411,15 +411,48 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
     visibility_floor = args.ymin if args.ylog else 0.0
     skipped: list[str] = []
 
-    def plot_curve(xs, ys, label):
+    def plot_curve(xs, ys, label, color=None, linestyle=None):
         if not np.any(ys > visibility_floor):
             skipped.append(f"{label} (no yield above {visibility_floor} kt)")
             return
-        ax.plot(xs, ys, label=label)
+        kwargs: dict = {}
+        if color is not None:
+            kwargs["color"] = color
+        if linestyle is not None:
+            kwargs["linestyle"] = linestyle
+        ax.plot(xs, ys, label=label, **kwargs)
+
+    # Cycle colors and line styles in a way that makes the bare-vs-composite
+    # pairings visually obvious: color encodes the "tech-level" dimension
+    # (compression), linestyle encodes the design variant (shell mass for
+    # vs=pu-mass; Pu mass for vs=shell-mass). Bare curves (shell=0) are
+    # dashed by convention; with-shell curves are solid.
+    cmap = plt.get_cmap("tab10")
+
+    def style_for_shell(shells_sorted, m_shell):
+        if m_shell == 0:
+            return "--"
+        # Multiple non-zero shells: cycle through solid variants.
+        nonzero = [s for s in shells_sorted if s != 0]
+        if len(nonzero) <= 1:
+            return "-"
+        idx = nonzero.index(m_shell)
+        return ["-", "-.", ":"][idx % 3]
+
+    def style_for_pu(pus_sorted, m_pu):
+        # Mirror of style_for_shell. By convention a "missing Pu" core
+        # is not a thing here, so just cycle linestyles in order.
+        if len(pus_sorted) <= 1:
+            return "-"
+        styles = ["-", "--", "-.", ":"]
+        return styles[pus_sorted.index(m_pu) % len(styles)]
 
     if args.vs == "pu-mass":
         shells = args.fixed_shell if args.fixed_shell else [0.0]
         etas = args.fixed_compression if args.fixed_compression else [2.5, 3.5, 5.0]
+        pair_mode = len(shells) > 1 and len(etas) > 1
+        eta_colors = {e: cmap(i % 10) for i, e in enumerate(etas)}
+        shells_sorted = sorted(shells)
         xs = np.linspace(args.pu_range[0], args.pu_range[1], args.num_points)
         for m_shell in shells:
             for eta in etas:
@@ -438,7 +471,14 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
                     label = shell_label
                 else:
                     label = f"eta = {eta:g}"
-                plot_curve(xs, ys, label)
+                if pair_mode:
+                    plot_curve(
+                        xs, ys, label,
+                        color=eta_colors[eta],
+                        linestyle=style_for_shell(shells_sorted, m_shell),
+                    )
+                else:
+                    plot_curve(xs, ys, label)
         ax.set_xlabel(f"Inner Pu mass ({pu_mat.key}) (kg)")
         title_default = "Composite pit: yield vs Pu mass"
         if len(shells) == 1 and shells[0] > 0:
@@ -449,6 +489,9 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
     elif args.vs == "shell-mass":
         pus = args.fixed_pu if args.fixed_pu else [1.0]
         etas = args.fixed_compression if args.fixed_compression else [2.5, 3.5, 5.0]
+        pair_mode = len(pus) > 1 and len(etas) > 1
+        eta_colors = {e: cmap(i % 10) for i, e in enumerate(etas)}
+        pus_sorted = sorted(pus)
         xs = np.linspace(args.shell_range[0], args.shell_range[1], args.num_points)
         for m_pu in pus:
             for eta in etas:
@@ -464,7 +507,14 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
                     label = f"M_Pu={m_pu:g} kg"
                 else:
                     label = f"eta = {eta:g}"
-                plot_curve(xs, ys, label)
+                if pair_mode:
+                    plot_curve(
+                        xs, ys, label,
+                        color=eta_colors[eta],
+                        linestyle=style_for_pu(pus_sorted, m_pu),
+                    )
+                else:
+                    plot_curve(xs, ys, label)
         ax.set_xlabel(f"Outer shell mass ({shell_mat.key}) (kg)")
         title_default = "Composite pit: yield vs shell mass"
         if len(pus) == 1:
@@ -473,6 +523,9 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
     else:  # vs == compression
         pus = args.fixed_pu if args.fixed_pu else [1.0]
         shells = args.fixed_shell if args.fixed_shell else [4.0]
+        pair_mode = len(pus) > 1 and len(shells) > 1
+        pu_colors = {m: cmap(i % 10) for i, m in enumerate(pus)}
+        shells_sorted = sorted(shells)
         xs = np.linspace(
             args.compression_range[0], args.compression_range[1], args.num_points
         )
@@ -494,7 +547,14 @@ def _do_plot_composite(args: argparse.Namespace) -> int:
                         if m_shell > 0
                         else "no shell"
                     )
-                plot_curve(xs, ys, label)
+                if pair_mode:
+                    plot_curve(
+                        xs, ys, label,
+                        color=pu_colors[m_pu],
+                        linestyle=style_for_shell(shells_sorted, m_shell),
+                    )
+                else:
+                    plot_curve(xs, ys, label)
         ax.set_xlabel(r"Compression $\eta = \rho/\rho_0$")
         title_default = "Composite pit: yield vs compression"
 
