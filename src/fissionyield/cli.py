@@ -13,6 +13,7 @@ from .composite import (
     critical_compression,
     yield_kt_composite,
 )
+from .historical import anchors, fit_eta as _fit_eta
 from .materials import MATERIALS, get_material
 from .model import MODELS, compression, kappa, mass_kg, yield_kt
 
@@ -262,6 +263,39 @@ def _add_solve_composite(sub: argparse._SubParsersAction) -> None:
 
 def _add_list(sub: argparse._SubParsersAction) -> None:
     sub.add_parser("list", help="List known materials and constants.")
+
+
+def _add_historical(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "historical",
+        help="List registered historical tests and their fit-eta values.",
+    )
+    p.add_argument(
+        "--pu-material",
+        default="delta-WGPu",
+        help="Inner (Pu) material assumed in the fit (default: delta-WGPu)",
+    )
+    p.add_argument(
+        "--shell-material",
+        default="WGU",
+        help="Outer shell material assumed in the fit (default: WGU)",
+    )
+    p.add_argument(
+        "--correction-factor",
+        type=float,
+        default=1.0,
+        help="Path-2 damping applied during the fit (default 1.0)",
+    )
+    p.add_argument(
+        "--composite-only",
+        action="store_true",
+        help="Restrict the listing to composite-core tests.",
+    )
+    p.add_argument(
+        "--exclude-boosted",
+        action="store_true",
+        help="Exclude tests flagged as fusion-boosted.",
+    )
 
 
 def _do_list() -> int:
@@ -642,6 +676,43 @@ def _do_solve_composite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _do_historical(args: argparse.Namespace) -> int:
+    tests = anchors()
+    if args.composite_only:
+        tests = tuple(t for t in tests if t.is_composite)
+    if args.exclude_boosted:
+        tests = tuple(t for t in tests if not t.boosted)
+
+    print(
+        f"{'NAME':14}  {'YEAR':>4}  {'CC':2}  {'M_Pu':>6}  {'M_HEU':>6}  "
+        f"{'Y (kt)':>8}  {'boost':>5}  {'fit eta':>8}"
+    )
+    print("-" * 70)
+    for t in tests:
+        try:
+            eta = _fit_eta(
+                t,
+                inner_mat=args.pu_material,
+                outer_mat=args.shell_material,
+                correction_factor=args.correction_factor,
+            )
+            eta_str = f"{eta:8.3f}"
+        except Exception as exc:  # noqa: BLE001 - surface bracket failures cleanly
+            eta_str = f"   ERR ({exc})"
+        boost_str = "  yes" if t.boosted else "   no"
+        year_str = f"{t.year:>4}" if t.year > 0 else " ----"
+        print(
+            f"{t.name:14}  {year_str}  {t.country:2}  "
+            f"{t.pu_kg:>6.2f}  {t.heu_kg:>6.2f}  "
+            f"{t.yield_kt:>8.2f}  {boost_str}  {eta_str}"
+        )
+        if t.notes:
+            print(f"    notes: {t.notes}")
+        if t.source:
+            print(f"    source: {t.source}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fissionyield",
@@ -649,7 +720,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Cochran one-group fast-fission yield model. Solve for any one "
             "of {mass, compression, yield} given the other two, or plot "
             "yield curves. Includes a composite-pit extension (Pu core + "
-            "fissile shell)."
+            "fissile shell) and a historical-anchor library."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -657,6 +728,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_plot(sub)
     _add_solve_composite(sub)
     _add_plot_composite(sub)
+    _add_historical(sub)
     _add_list(sub)
 
     args = parser.parse_args(argv)
@@ -670,6 +742,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_solve_composite(args)
     if args.cmd == "plot-composite":
         return _do_plot_composite(args)
+    if args.cmd == "historical":
+        return _do_historical(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 

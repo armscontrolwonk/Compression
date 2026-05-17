@@ -343,17 +343,20 @@ def test_compression_composite_bad_inputs():
 
 
 @pytest.mark.parametrize(
-    "label,m_pu,m_heu,Y_obs,eta_expected",
+    "name,eta_expected",
     [
-        ("RDS-4",    4.2, 6.8, 28.0, 2.34),
-        ("Low Tony", 0.9, 1.4,  1.0, 4.04),
-        ("CHIC-12",  2.0, 0.5, 15.0, 5.35),
+        ("RDS-4",    2.34),
+        ("Low Tony", 4.04),
+        ("CHIC-12",  5.35),
     ],
 )
-def test_historical_fit_eta(label, m_pu, m_heu, Y_obs, eta_expected):
-    eta_fit = compression_composite(m_pu, m_heu, Y_obs, "delta-WGPu", "WGU")
+def test_historical_fit_eta(name, eta_expected):
+    """Anchor library composites must back-fit to the documented eta values."""
+    from fissionyield import fit_eta, get_test
+
+    eta_fit = fit_eta(get_test(name))
     assert eta_fit == pytest.approx(eta_expected, rel=0.01), (
-        f"{label}: expected eta~{eta_expected}, got {eta_fit:.3f}"
+        f"{name}: expected eta~{eta_expected}, got {eta_fit:.3f}"
     )
 
 
