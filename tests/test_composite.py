@@ -510,7 +510,7 @@ def test_compression_composite_bad_inputs():
         # fit-eta values under the default Serber-b calibration
         ("SANDSTONE X-Ray", 3.633),
         ("RDS-4",           2.495),
-        ("Low Tony",        4.209),
+        ("Low Tony",        2.681),
         ("CHIC-12",         5.466),
     ],
 )

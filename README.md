@@ -190,19 +190,22 @@ This is the "Path 1" interpretation — the model's *relative* predictions
 (yield vs. mass, geometry, compression) are trusted; the η that fits the
 historical record is taken as the effective compression actually achieved.
 
-Three historical composite-core tests give a coherent picture under this
+Five historical composite-core tests give a coherent picture under this
 interpretation (fit-η under the default Serber-b calibration; rigorous
 values in parentheses):
 
-| Test            | Pu (kg) | HEU (kg) | Yield (kt) | Fit η (Serber / rigorous) |
-|-----------------|--------:|---------:|-----------:|---------------------------|
-| Fat Man (1945)  |     6.1 |      0.0 |         20 |  3.02 / 3.02 (pure Pu)    |
-| RDS-4 (1953)    |     4.2 |      6.8 |         28 |  2.50 / 2.34              |
-| Low Tony (1960) |     0.9 |      1.4 |          1 |  4.21 / 4.05              |
-| CHIC-12 (PRC)   |     2.0 |      0.5 |         15 |  5.47 / 5.35*             |
+| Test              | Pu (kg) | HEU (kg) | Yield (kt) | Fit η (Serber / rigorous) |
+|-------------------|--------:|---------:|-----------:|---------------------------|
+| Fat Man (1945)    |     6.1 |      0.0 |         20 |  3.02 / 3.02 (pure Pu)    |
+| SANDSTONE X-Ray (1948) | 2.38 | 4.77    |         37 |  3.63 / 3.35              |
+| RDS-4 (1953)      |     4.2 |      6.8 |         28 |  2.50 / 2.34              |
+| Low Tony (1960)   |     0.9 |      5.6 |          1 |  2.68 / 2.55†             |
+| CHIC-12 (PRC)     |     2.0 |      0.5 |         15 |  5.47 / 5.35*             |
 
 *CHIC-12 may have been boosted; the fit-η is an upper bound on the
 pure-fission compression.
+†Low Tony masses are from declassified UK MoD/AWRE Controllable
+Document A/1171 (31 December 1959).
 
 The fit-η rises monotonically with test date, mirroring the historical
 progression of implosion sophistication. Bare-sphere one-group theory is

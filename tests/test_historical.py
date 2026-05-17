@@ -62,7 +62,7 @@ def test_fat_man_fit_eta_matches_single_material():
         ("Fat Man",          3.021),  # pure Pu, unchanged vs rigorous
         ("SANDSTONE X-Ray",  3.633),  # US 1948 composite
         ("RDS-4",            2.495),
-        ("Low Tony",         4.209),
+        ("Low Tony",         2.681),  # UK; mass split from MoD doc A/1171
         ("CHIC-12",          5.466),
     ],
 )

@@ -125,12 +125,27 @@ _ANCHORS: tuple[HistoricalTest, ...] = (
     HistoricalTest(
         name="Low Tony",
         year=1960,
-        country="USA",
+        country="UK",
         pu_kg=0.9,
-        heu_kg=1.4,
+        heu_kg=5.6,
         yield_kt=1.0,
-        notes="Small-yield composite. Tamper not modeled.",
-        source="User-supplied (see session notes).",
+        notes=(
+            "UK low-yield design. Material loadings from declassified UK "
+            "MoD/AWRE table 'Table I' dated 31 December 1959 (Controllable "
+            "Document A/1171, Top Secret Atomic, declassified). In the "
+            "source document the U column is HEU and the AM column is "
+            "tritium (boosting material); Low Tony has no AM entry, "
+            "consistent with an unboosted design. Tamper not modeled. "
+            "Earlier session-recorded mass split (0.9 kg Pu + 1.4 kg HEU) "
+            "was the user's recollection -- the document shows that 1.4 kg "
+            "HEU is actually the Tony loading, not Low Tony."
+        ),
+        source=(
+            "UK Ministry of Defence / Atomic Weapons Research "
+            "Establishment, Controllable Document A/1171 (AWPAC/4/5), "
+            "31 December 1959, Table I, page 1; declassified per stamp "
+            "on document. Yield per session-supplied context."
+        ),
     ),
     HistoricalTest(
         name="CHIC-12",
