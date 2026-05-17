@@ -182,6 +182,51 @@ drawn with. When comparing composite yield curves to NRDC, use
 `--model 6.49` on the single-material side as well. Cochran himself notes
 that 6.57 and 6.49 agree to within ~30%.
 
+### Inferring effective compression from observed yields
+
+`compression_composite()` inverts the forward model: given observed yield
+and the inner/outer masses, it returns the η consistent with the model.
+This is the "Path 1" interpretation — the model's *relative* predictions
+(yield vs. mass, geometry, compression) are trusted; the η that fits the
+historical record is taken as the effective compression actually achieved.
+
+Three historical composite-core tests give a coherent picture under this
+interpretation:
+
+| Test          | Pu (kg) | HEU (kg) | Yield (kt) | Fit η  |
+|---------------|--------:|---------:|-----------:|-------:|
+| RDS-4 (1952)  |     4.2 |      6.8 |         28 |  2.3   |
+| Low Tony (1960) |   0.9 |      1.4 |          1 |  4.0   |
+| CHIC-12 (PRC) |     2.0 |      0.5 |         15 |  5.4*  |
+
+*CHIC-12 may have been boosted; the fit-η is an upper bound on the
+pure-fission compression.
+
+The fit-η rises monotonically with test date, mirroring the historical
+progression of implosion sophistication. Bare-sphere one-group theory is
+known to overestimate absolute yields by a factor of ~2–3 at moderate κ
+and worse at high κ (Cochran himself applies an empirical `b` factor of
+0.5 to HEU in eq. 6.60 to compensate); under "Path 1" that error is
+absorbed into the effective η rather than carried as a separate
+calibration. Use `compression_composite` for inversion, and `correction_factor`
+on `yield_kt_composite` if you'd rather keep η at a nominal value and damp
+the yield directly.
+
+```python
+from fissionyield import compression_composite, yield_kt_composite
+
+# Fit effective compression to RDS-4 (1952 Soviet composite core)
+eta_fit = compression_composite(
+    mass_inner_kg=4.2, mass_outer_kg=6.8, Y_kt=28.0,
+    inner_mat="delta-WGPu", outer_mat="WGU",
+)  # ~2.34
+
+# Or apply a Path-2 damping factor and recompute
+Y_damped = yield_kt_composite(
+    4.2, 6.8, 5.0, "delta-WGPu", "WGU", correction_factor=0.04
+)  # ~28 kt at user-supplied eta=5
+```
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with

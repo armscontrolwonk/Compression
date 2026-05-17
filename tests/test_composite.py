@@ -6,6 +6,8 @@ import pytest
 
 from fissionyield import (
     alpha_eigenvalue,
+    compression,
+    compression_composite,
     critical_compression,
     critical_mass_composite,
     get_material,
@@ -226,3 +228,130 @@ def test_nonpositive_compression_raises():
         yield_kt_composite(1.0, 1.0, 0.0, "delta-WGPu", "WGU")
     with pytest.raises(ValueError):
         alpha_eigenvalue(1.0, 1.0, -1.0, "delta-WGPu", "WGU")
+
+
+# ---------------------------------------------------------------------------
+# correction_factor knob (Path 2 escape hatch -- ad-hoc damping)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factor", [0.1, 0.5, 1.0, 2.0])
+def test_correction_factor_scales_yield_linearly(factor):
+    Y_base = yield_kt_composite(3.0, 5.0, 2.5, "delta-WGPu", "WGU")
+    Y_scaled = yield_kt_composite(
+        3.0, 5.0, 2.5, "delta-WGPu", "WGU", correction_factor=factor
+    )
+    assert Y_scaled == pytest.approx(factor * Y_base)
+
+
+def test_correction_factor_applies_in_single_material_limits():
+    Y_base = yield_kt_composite(6.1, 0.0, 2.5, "delta-WGPu", "WGU")
+    Y_half = yield_kt_composite(
+        6.1, 0.0, 2.5, "delta-WGPu", "WGU", correction_factor=0.5
+    )
+    assert Y_half == pytest.approx(0.5 * Y_base)
+
+
+def test_correction_factor_bad_inputs():
+    with pytest.raises(ValueError):
+        yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", correction_factor=0.0)
+    with pytest.raises(ValueError):
+        yield_kt_composite(1.0, 1.0, 2.0, "delta-WGPu", "WGU", correction_factor=-1.0)
+
+
+# ---------------------------------------------------------------------------
+# compression_composite: invert yield -> eta
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "m_in,m_out,eta",
+    [
+        (3.0, 5.0, 2.5),
+        (4.0, 8.0, 3.0),
+        (1.5, 2.5, 4.0),
+        (6.0, 4.0, 2.0),
+    ],
+)
+def test_compression_composite_round_trip(m_in, m_out, eta):
+    Y = yield_kt_composite(m_in, m_out, eta, "delta-WGPu", "WGU")
+    eta_back = compression_composite(m_in, m_out, Y, "delta-WGPu", "WGU")
+    assert eta_back == pytest.approx(eta, rel=1e-6)
+
+
+@pytest.mark.parametrize("factor", [0.1, 0.5, 2.0])
+def test_compression_composite_round_trip_with_correction(factor):
+    """The correction factor on the inverse must match the forward."""
+    m_in, m_out, eta = 3.0, 5.0, 2.5
+    Y = yield_kt_composite(
+        m_in, m_out, eta, "delta-WGPu", "WGU", correction_factor=factor
+    )
+    eta_back = compression_composite(
+        m_in, m_out, Y, "delta-WGPu", "WGU", correction_factor=factor
+    )
+    assert eta_back == pytest.approx(eta, rel=1e-6)
+
+
+def test_compression_composite_single_inner_matches_cochran():
+    """In the single-material limit, the composite inverse equals the
+    Cochran 6.49 inverse from model.compression."""
+    m = 6.1
+    Y = 5.0
+    eta_comp = compression_composite(m, 0.0, Y, "delta-WGPu", "WGU")
+    eta_single = compression(m, Y, "delta-WGPu", model="6.49")
+    assert eta_comp == pytest.approx(eta_single, rel=1e-12)
+
+
+def test_compression_composite_single_outer_matches_cochran():
+    m = 30.0
+    Y = 2.0
+    eta_comp = compression_composite(0.0, m, Y, "delta-WGPu", "WGU")
+    eta_single = compression(m, Y, "WGU", model="6.49")
+    assert eta_comp == pytest.approx(eta_single, rel=1e-12)
+
+
+def test_compression_composite_below_critical_returns_eta_c():
+    """Y_kt = 0 means the system is at threshold; return the critical eta."""
+    eta_c = critical_compression(2.0, 3.0, "delta-WGPu", "WGU")
+    eta_zero = compression_composite(2.0, 3.0, 0.0, "delta-WGPu", "WGU")
+    assert eta_zero == pytest.approx(eta_c, rel=1e-9)
+
+
+def test_compression_composite_monotone_in_yield():
+    """Higher observed yield should imply higher fitted compression."""
+    m_in, m_out = 3.0, 5.0
+    ys = [0.1, 1.0, 5.0, 20.0, 100.0]
+    etas = [compression_composite(m_in, m_out, y, "delta-WGPu", "WGU") for y in ys]
+    assert etas == sorted(etas)
+
+
+def test_compression_composite_bad_inputs():
+    with pytest.raises(ValueError):
+        compression_composite(1.0, 1.0, -1.0, "delta-WGPu", "WGU")
+    with pytest.raises(ValueError):
+        compression_composite(-1.0, 1.0, 1.0, "delta-WGPu", "WGU")
+    with pytest.raises(ValueError):
+        compression_composite(0.0, 0.0, 1.0, "delta-WGPu", "WGU")
+
+
+# ---------------------------------------------------------------------------
+# Historical-test calibration anchors. These document expected fit-eta values
+# for the three data points used in the README's Path 1 calibration. Failing
+# this test means the model output has shifted relative to those documented
+# values -- either an honest fix or a regression.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label,m_pu,m_heu,Y_obs,eta_expected",
+    [
+        ("RDS-4",    4.2, 6.8, 28.0, 2.34),
+        ("Low Tony", 0.9, 1.4,  1.0, 4.04),
+        ("CHIC-12",  2.0, 0.5, 15.0, 5.35),
+    ],
+)
+def test_historical_fit_eta(label, m_pu, m_heu, Y_obs, eta_expected):
+    eta_fit = compression_composite(m_pu, m_heu, Y_obs, "delta-WGPu", "WGU")
+    assert eta_fit == pytest.approx(eta_expected, rel=0.01), (
+        f"{label}: expected eta~{eta_expected}, got {eta_fit:.3f}"
+    )

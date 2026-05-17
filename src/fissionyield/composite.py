@@ -189,7 +189,14 @@ def alpha_eigenvalue(
 def _critical_mass_at_normal_density(
     fraction_inner: float, inner_mat: Material, outer_mat: Material
 ) -> float:
-    """Total mass M_c at eta=1 for a composite with given inner mass fraction."""
+    """Total mass M_c at eta=1 for a composite with given inner mass fraction.
+
+    The criticality determinant F(M; alpha=0, eta=1) has multiple roots, one
+    per spatial harmonic (fundamental at the smallest M, higher modes at
+    successively larger M with internal flux nodes). The physical critical
+    mass is the fundamental, so we scan from small M upward and take the
+    first sign change.
+    """
     f = fraction_inner
     if f <= 0.0:
         return outer_mat.M0
@@ -202,20 +209,26 @@ def _critical_mass_at_normal_density(
         R1, R2 = _radii(m_in, m_out, 1.0, inner_mat, outer_mat)
         return _criticality_F(0.0, 1.0, R1, R2, inner_mat, outer_mat)
 
-    M_lo = min(inner_mat.M0, outer_mat.M0) * 0.05
-    M_hi = max(inner_mat.M0, outer_mat.M0) * 5.0
-    F_lo = F_at_crit(M_lo)
-    F_hi = F_at_crit(M_hi)
-    for _ in range(40):
-        if F_lo * F_hi < 0.0:
-            break
+    M_lo = 0.01 * min(inner_mat.M0, outer_mat.M0)
+    M_hi = 2.0 * max(inner_mat.M0, outer_mat.M0)
+    n_scan = 200
+    prev_M = M_lo
+    prev_F = F_at_crit(prev_M)
+    for i in range(1, n_scan + 1):
+        M = M_lo + (M_hi - M_lo) * (i / n_scan)
+        cur_F = F_at_crit(M)
+        if prev_F * cur_F < 0.0:
+            return brentq(F_at_crit, prev_M, M, xtol=1e-9, rtol=1e-12)
+        prev_M, prev_F = M, cur_F
+
+    # Fallback: extend upward if the fundamental sits beyond the initial range.
+    for _ in range(20):
         M_hi *= 2.0
-        F_hi = F_at_crit(M_hi)
-    else:
-        raise RuntimeError(
-            f"Could not bracket M_c at f={f} (F_lo={F_lo}, F_hi={F_hi})"
-        )
-    return brentq(F_at_crit, M_lo, M_hi, xtol=1e-9, rtol=1e-12)
+        cur_F = F_at_crit(M_hi)
+        if prev_F * cur_F < 0.0:
+            return brentq(F_at_crit, prev_M, M_hi, xtol=1e-9, rtol=1e-12)
+        prev_M, prev_F = M_hi, cur_F
+    raise RuntimeError(f"Could not find fundamental M_c at f={f}")
 
 
 def critical_compression(
@@ -268,12 +281,17 @@ def yield_kt_composite(
     eta: float,
     inner_mat: str | Material,
     outer_mat: str | Material,
+    correction_factor: float = 1.0,
 ) -> float:
     """Composite-core yield in kilotons.
 
     Uses Cochran's hydrodynamic formula with alpha from the two-region
     eigenvalue solve. Reduces exactly to yield_kt(..., model='6.49')
     in the single-material limit (one mass set to zero).
+
+    correction_factor multiplies the final yield. Default 1.0 gives the
+    rigorous one-group prediction. Values < 1 model the well-documented
+    overestimate of bare-sphere theory at high kappa (see README).
     """
     inner = get_material(inner_mat)
     outer = get_material(outer_mat)
@@ -281,13 +299,19 @@ def yield_kt_composite(
         raise ValueError("masses must be non-negative")
     if eta <= 0:
         raise ValueError("compression must be positive")
+    if correction_factor <= 0:
+        raise ValueError("correction_factor must be positive")
     M_total = mass_inner_kg + mass_outer_kg
     if M_total == 0:
         return 0.0
     if mass_inner_kg == 0:
-        return _yield_kt_single(mass_outer_kg, eta, outer, model="6.49")
+        return correction_factor * _yield_kt_single(
+            mass_outer_kg, eta, outer, model="6.49"
+        )
     if mass_outer_kg == 0:
-        return _yield_kt_single(mass_inner_kg, eta, inner, model="6.49")
+        return correction_factor * _yield_kt_single(
+            mass_inner_kg, eta, inner, model="6.49"
+        )
 
     eta_c = critical_compression(mass_inner_kg, mass_outer_kg, inner, outer)
     if eta <= eta_c:
@@ -303,4 +327,81 @@ def yield_kt_composite(
     V_over_dV = 1.0 / (1.0 - (R2_init / R2_crit) ** 3)
 
     Y_raw = 0.9 * M_total * (delta_R * alpha) ** 2 * V_over_dV
-    return KT_PER_RAW * Y_raw
+    return correction_factor * KT_PER_RAW * Y_raw
+
+
+def compression_composite(
+    mass_inner_kg: float,
+    mass_outer_kg: float,
+    Y_kt: float,
+    inner_mat: str | Material,
+    outer_mat: str | Material,
+    correction_factor: float = 1.0,
+) -> float:
+    """Compression eta consistent with an observed yield Y_kt for the given
+    composite masses.
+
+    Inverts yield_kt_composite. Useful for inferring effective compression
+    from historical test data (the "Path 1" calibration described in the
+    README): given the configuration and observed yield, returns the eta
+    the model assigns to that test.
+
+    Below criticality (Y_kt = 0) returns the critical compression eta_c.
+    """
+    inner = get_material(inner_mat)
+    outer = get_material(outer_mat)
+    if mass_inner_kg < 0 or mass_outer_kg < 0:
+        raise ValueError("masses must be non-negative")
+    if Y_kt < 0:
+        raise ValueError("yield must be non-negative")
+    if correction_factor <= 0:
+        raise ValueError("correction_factor must be positive")
+    if mass_inner_kg + mass_outer_kg <= 0:
+        raise ValueError("at least one mass must be positive")
+
+    # Single-material reductions: delegate to the existing 6.49 inverse,
+    # adjusting the target yield for the correction factor.
+    from .model import compression as _compression_single
+
+    Y_target = Y_kt / correction_factor
+    if mass_inner_kg == 0:
+        if Y_target == 0:
+            return math.sqrt(outer.M0 / mass_outer_kg)
+        return _compression_single(mass_outer_kg, Y_target, outer, model="6.49")
+    if mass_outer_kg == 0:
+        if Y_target == 0:
+            return math.sqrt(inner.M0 / mass_inner_kg)
+        return _compression_single(mass_inner_kg, Y_target, inner, model="6.49")
+
+    eta_c = critical_compression(mass_inner_kg, mass_outer_kg, inner, outer)
+    if Y_kt == 0:
+        return eta_c
+
+    def F(e: float) -> float:
+        return (
+            yield_kt_composite(
+                mass_inner_kg,
+                mass_outer_kg,
+                e,
+                inner,
+                outer,
+                correction_factor=correction_factor,
+            )
+            - Y_kt
+        )
+
+    lo = eta_c * (1.0 + 1e-9)
+    hi = max(lo * 2.0, 20.0)
+    F_hi = F(hi)
+    for _ in range(40):
+        if F_hi > 0:
+            break
+        hi *= 2.0
+        F_hi = F(hi)
+    else:
+        raise RuntimeError(
+            f"Could not bracket compression for Y={Y_kt} kt "
+            f"(M_in={mass_inner_kg}, M_out={mass_outer_kg}, "
+            f"correction_factor={correction_factor})"
+        )
+    return brentq(F, lo, hi, xtol=1e-9, rtol=1e-12)

@@ -8,6 +8,7 @@ under (6.57) and numerical back-solves under (6.49).
 
 from .composite import (
     alpha_eigenvalue,
+    compression_composite,
     critical_compression,
     critical_mass_composite,
     yield_kt_composite,
@@ -20,6 +21,7 @@ __all__ = [
     "Material",
     "alpha_eigenvalue",
     "compression",
+    "compression_composite",
     "critical_compression",
     "critical_mass_composite",
     "get_material",
