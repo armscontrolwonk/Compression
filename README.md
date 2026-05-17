@@ -122,6 +122,66 @@ print(compression(mass_kg=6.1, Y_kt=20.0, material=mat))       # eta for Y
 print(mass_kg(eta=2.5, Y_kt=1.0, material=mat))                # mass for Y
 ```
 
+## Composite cores (Pu inside + HEU outside, or reversed)
+
+For two-region cores — an inner sphere of one fissile material surrounded by
+an outer shell of another — the bare-sphere closed form does not apply.
+`fissionyield.composite` extends Cochran's one-group derivation to two
+regions by solving the transcendental criticality determinant for the
+fundamental α directly, then plugging into Cochran's hydrodynamic yield
+formula (his eq. 6.36 in its general pre-simplification form):
+
+```
+Y = (9/10) · M_total · (ΔR · α)² / (1 − (R_init/R_crit)³)
+```
+
+where α is the eigenvalue at compression η and ΔR is the expansion of the
+outer surface from η to the second-criticality compression. The composite
+formula reduces *exactly* to Cochran's eq. 6.49 (the rigorous bare-sphere
+form) when one mass goes to zero, so the single-material limit is
+apples-to-apples with the rest of the package.
+
+Assumptions:
+- One-group diffusion theory in both regions
+- Both regions compressed uniformly by the same η (bulk-modulus differences
+  ignored — a deliberate simplification)
+- Zero flux at the outer surface (Cochran's B = π/R convention, no
+  extrapolation distance)
+- No tamper / reflector (bare two-region sphere)
+
+Material constants are taken from Cochran Table 3.1; the per-region
+diffusion coefficient is derived from `α∞,o` and `R₀` via eq. 5.8.
+No new fitted parameters are introduced.
+
+```python
+from fissionyield import yield_kt_composite, alpha_eigenvalue
+from fissionyield import critical_mass_composite, critical_compression
+
+# 4 kg Pu inside, 8 kg HEU outside, compressed 2.5×
+Y = yield_kt_composite(4.0, 8.0, 2.5, "delta-WGPu", "WGU")
+
+# Bare critical mass at a given Pu mass fraction
+M_c = critical_mass_composite(fraction_inner=0.5, eta=1.0,
+                              inner_mat="delta-WGPu", outer_mat="WGU")
+
+# Compression at which a given inner/outer mass split goes critical
+eta_c = critical_compression(4.0, 8.0, "delta-WGPu", "WGU")
+
+# Effective neutron-multiplication rate (eigenvalue) at compression η
+alpha = alpha_eigenvalue(4.0, 8.0, 2.5, "delta-WGPu", "WGU")
+```
+
+Geometry matters: putting Pu inside (where the radial flux is highest) gives
+a lower M_c than putting it outside. For a 1:1 mass split at η=1 the model
+predicts roughly 18 kg (Pu inside / HEU outside) vs 44 kg (HEU inside / Pu
+outside).
+
+**Apples-to-apples note**: the composite formula generalizes Cochran's
+*rigorous* eq. 6.49, not the simplified 6.57 that NRDC Figures 1 and 2 are
+drawn with. When comparing composite yield curves to NRDC, use
+`--model 6.49` on the single-material side as well. Cochran himself notes
+that 6.57 and 6.49 agree to within ~30%.
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with
