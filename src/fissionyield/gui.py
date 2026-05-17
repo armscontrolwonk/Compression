@@ -12,19 +12,16 @@ import matplotlib
 matplotlib.use("QtAgg")
 
 import numpy as np
-from matplotlib.backends.backend_qtagg import (
-    FigureCanvasQTAgg as FigureCanvas,
-    NavigationToolbar2QT as NavigationToolbar,
-)
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -219,16 +216,19 @@ class PlotPanel(QWidget):
         self._ymin.setValue(0.01)
         clayout.addRow("Y floor (log):", self._ymin)
 
+        btn_row = QHBoxLayout()
         self._update_btn = QPushButton("Update plot")
         self._update_btn.clicked.connect(self.replot)
-        clayout.addRow(self._update_btn)
+        self._save_btn = QPushButton("Save plot…")
+        self._save_btn.clicked.connect(self._save_plot)
+        btn_row.addWidget(self._update_btn)
+        btn_row.addWidget(self._save_btn)
+        clayout.addRow(_wrap(btn_row))
 
         layout.addWidget(controls)
 
         self._figure = Figure(figsize=(6, 4.5), tight_layout=True)
         self._canvas = FigureCanvas(self._figure)
-        self._toolbar = NavigationToolbar(self._canvas, self)
-        layout.addWidget(self._toolbar)
         layout.addWidget(self._canvas, stretch=1)
 
         self.replot()
@@ -309,6 +309,19 @@ class PlotPanel(QWidget):
             )
 
         self._canvas.draw_idle()
+
+    def _save_plot(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save plot",
+            "yield_plot.png",
+            "PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;All files (*)",
+        )
+        if path:
+            try:
+                self._figure.savefig(path, dpi=140)
+            except Exception as exc:
+                QMessageBox.warning(self, "Save failed", str(exc))
 
 
 def _wrap(layout) -> QWidget:
