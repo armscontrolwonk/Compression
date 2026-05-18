@@ -57,21 +57,25 @@ __all__ = ["yield_kt"]
 # Cochran Table 3.1 -- only the two materials this extract uses.
 # Per material: density (g/cm^3); bare critical mass at normal density (kg);
 # bare critical radius at normal density (cm); infinite-medium prompt-alpha
-# at normal density (1/shake); Serber/Cochran efficiency calibration b
+# at normal density (1/shake); (R0*alpha_inf)^2 in (cm/shake)^2 as Cochran
+# tabulates it (a single rounded number not exactly equal to R0^2 * ainf^2
+# at three-decimal precision); Serber/Cochran efficiency calibration b
 # (eq. 6.60).
 _PU = {
-    "rho":  15.660,   # delta-phase weapon-grade plutonium (5% Pu-240)
-    "M0":   16.29,
-    "R0":   6.285,
-    "ainf": 2.19,
-    "b":    1.0,
+    "rho":    15.660,   # delta-phase weapon-grade plutonium (5% Pu-240)
+    "M0":     16.29,
+    "R0":     6.285,
+    "ainf":   2.19,
+    "Rxa_sq": 190.0,    # Cochran-tabulated (R0*alpha_inf)^2 for use in eq. 6.49
+    "b":      1.0,
 }
 _HEU = {
-    "rho":  18.74,    # weapon-grade uranium, 93.5% U-235
-    "M0":   52.42,
-    "R0":   8.74,
-    "ainf": 1.10,
-    "b":    0.5,
+    "rho":    18.74,    # weapon-grade uranium, 93.5% U-235
+    "M0":     52.42,
+    "R0":     8.74,
+    "ainf":   1.10,
+    "Rxa_sq": 92.0,
+    "b":      0.5,
 }
 
 # One raw unit (kg * (cm/shake)^2) converts to kt with this multiplier
@@ -134,6 +138,36 @@ def _det(alpha, eta, R1, R2):
     sum2 = b2 * R1 * cBt + sBt
 
     return _D0(_PU) * diff1 * sBt + _D0(_HEU) * s1 * sum2
+
+
+# ---------------------------------------------------------------------------
+# Cochran eq. 6.49 -- single-material closed form
+# ---------------------------------------------------------------------------
+
+def _cochran_649_kt(mat, M_kg, eta):
+    """Cochran eq. 6.49 (rigorous form) yield in kt for a single bare
+    sphere of given material, mass M_kg, compression eta. Returns 0
+    for sub-critical configurations (kappa <= 1).
+
+      Y = 0.24 * 0.9 * M * (R0*ainf)^2 * kappa^(2/3)
+              * (kappa^(1/6) - 1)^2 * (1 - kappa^(-2/3))^2
+              / (1 - kappa^(-1/2))
+
+    Uses the tabulated (R0*alpha_inf)^2 value directly so the standalone
+    matches Cochran's published numbers bit-exact in the single-material
+    limit (no rounding gap between his R0/alpha_inf entries and the
+    Rxa_sq he publishes).
+    """
+    kappa = (M_kg / mat["M0"]) * eta * eta
+    if kappa <= 1.0:
+        return 0.0
+    factor = (
+        kappa ** (2.0 / 3.0)
+        * (kappa ** (1.0 / 6.0) - 1.0) ** 2
+        * (1.0 - kappa ** (-2.0 / 3.0)) ** 2
+        / (1.0 - kappa ** (-0.5))
+    )
+    return _KT_PER_RAW * 0.9 * M_kg * mat["Rxa_sq"] * factor
 
 
 # ---------------------------------------------------------------------------
@@ -306,13 +340,16 @@ def yield_kt(
     if M_total == 0:
         return 0.0
 
-    # Mass-weighted physics calibration. Pure-material limits collapse cleanly.
+    # Single-material limits: route through Cochran eq. 6.49 closed form
+    # using his tabulated (R0*alpha_inf)^2 so the result matches the
+    # published Cochran/NRDC calculation bit-exact.
     if m_pu_kg == 0:
-        b_eff = b_heu
-    elif m_heu_kg == 0:
-        b_eff = b_pu
-    else:
-        b_eff = (m_pu_kg * b_pu + m_heu_kg * b_heu) / M_total
+        return correction_factor * b_heu * _cochran_649_kt(_HEU, m_heu_kg, eta)
+    if m_heu_kg == 0:
+        return correction_factor * b_pu * _cochran_649_kt(_PU, m_pu_kg, eta)
+
+    # Composite case: two-region eigenvalue solver + hydrodynamic yield.
+    b_eff = (m_pu_kg * b_pu + m_heu_kg * b_heu) / M_total
 
     eta_c = _critical_eta(m_pu_kg, m_heu_kg)
     if eta <= eta_c:
