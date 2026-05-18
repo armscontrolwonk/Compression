@@ -43,6 +43,12 @@ from .plasma import (
     temperature_for_energy,
 )
 from .secondary import SecondaryResult, secondary_yield
+from .total import (
+    SOLVABLE_MASSES,
+    TotalYieldResult,
+    solve_mass,
+    yield_kt_total,
+)
 
 __all__ = [
     # boost
@@ -75,4 +81,9 @@ __all__ = [
     # secondary
     "SecondaryResult",
     "secondary_yield",
+    # multi-stage
+    "TotalYieldResult",
+    "yield_kt_total",
+    "solve_mass",
+    "SOLVABLE_MASSES",
 ]

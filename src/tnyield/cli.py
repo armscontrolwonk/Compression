@@ -28,6 +28,7 @@ from .secondary import (
 from .secondary import (
     DEFAULT_U238_BURN_FRACTION as SEC_DEFAULT_U238_BURN,
 )
+from .total import SOLVABLE_MASSES, solve_mass, yield_kt_total
 
 
 # ---------- subcommands --------------------------------------------------
@@ -132,6 +133,97 @@ def _add_secondary(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--spark-burn", type=float, default=0.20, metavar="FRAC")
     p.add_argument("--H-B", type=float, default=DEFAULT_H_B_LID, metavar="G_PER_CM2",
                    help=f"Lindl burn-fraction H_B (default: {DEFAULT_H_B_LID})")
+
+
+def _add_mass_arguments(p: argparse.ArgumentParser) -> None:
+    """Common mass and knob arguments for `total` / `solve`."""
+    p.add_argument("--m-pu", type=float, default=0.0, metavar="KG",
+                   help="Plutonium mass in the primary (kg)")
+    p.add_argument("--m-heu", type=float, default=0.0, metavar="KG",
+                   help="HEU mass in the primary (kg)")
+    p.add_argument("--eta", type=float, default=2.5, metavar="ETA",
+                   help="Primary compression rho/rho_0 (default: 2.5)")
+    p.add_argument("--m-dt", type=float, default=0.0, metavar="GRAMS",
+                   help="DT boost gas mass (grams)")
+    p.add_argument("--m-li6d-layer", type=float, default=0.0, metavar="KG",
+                   help="Lithium-6 deuteride mass in the layer cake (kg)")
+    p.add_argument("--li6-layer", type=float, default=0.95, metavar="FRAC",
+                   help="Li-6 fraction in the layer cake (default: 0.95)")
+    p.add_argument("--m-u238-layer", type=float, default=0.0, metavar="KG",
+                   help="U-238 mass in the layer cake (kg)")
+    p.add_argument("--m-lid-secondary", type=float, default=0.0, metavar="KG",
+                   help="Secondary LiD fuel mass (kg)")
+    p.add_argument("--li6-secondary", type=float, default=0.95, metavar="FRAC")
+    p.add_argument("--m-spark", type=float, default=0.0, metavar="KG",
+                   help="Spark plug mass (kg)")
+    p.add_argument("--spark-mat", default="delta-WGPu",
+                   help="Spark plug material (default: delta-WGPu)")
+    p.add_argument("--m-u238-tamper", type=float, default=0.0, metavar="KG",
+                   help="Secondary U-238 tamper mass (kg)")
+    p.add_argument("--m-u238-jacket", type=float, default=0.0, metavar="KG",
+                   help="Tertiary FFF jacket mass (kg)")
+    # Knob overrides (defaults flow from yield_kt_total)
+    p.add_argument("--LiD-burn-secondary", type=float, default=None,
+                   metavar="FRAC",
+                   help="Override secondary LiD burn fraction (default: Lindl)")
+    p.add_argument("--u238-tamper-burn", type=float, default=None,
+                   metavar="FRAC", help="U-238 tamper burn fraction")
+    p.add_argument("--jacket-burn", type=float, default=None, metavar="FRAC",
+                   help="FFF jacket burn fraction")
+
+
+def _build_total_kwargs(args: argparse.Namespace) -> dict:
+    kw = dict(
+        m_pu_kg=args.m_pu, m_heu_kg=args.m_heu, eta=args.eta,
+        m_dt_g=args.m_dt,
+        m_li6d_layer_kg=args.m_li6d_layer,
+        li6_enrichment_layer=args.li6_layer,
+        m_u238_layer_kg=args.m_u238_layer,
+        m_lid_secondary_kg=args.m_lid_secondary,
+        li6_enrichment_secondary=args.li6_secondary,
+        m_spark_plug_kg=args.m_spark,
+        spark_plug_material=args.spark_mat,
+        m_u238_tamper_kg=args.m_u238_tamper,
+        m_u238_jacket_kg=args.m_u238_jacket,
+    )
+    if args.LiD_burn_secondary is not None:
+        kw["secondary_LiD_burn_fraction"] = args.LiD_burn_secondary
+    if args.u238_tamper_burn is not None:
+        kw["u238_tamper_burn_fraction"] = args.u238_tamper_burn
+    if args.jacket_burn is not None:
+        kw["jacket_burn_fraction"] = args.jacket_burn
+    return kw
+
+
+def _add_total(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "total",
+        help="Multi-stage forward yield: primary + boost + layer cake + secondary + FFF jacket.",
+        description=(
+            "Total yield in kt for a device built from any combination of "
+            "primary fission (Pu/HEU), boost gas, layer-cake LiD layer, "
+            "Teller-Ulam secondary, and FFF jacket. Unused components stay "
+            "at zero mass."
+        ),
+    )
+    _add_mass_arguments(p)
+
+
+def _add_solve(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "solve",
+        help="Solve for one mass given a target total yield.",
+        description=(
+            "Fix every mass and knob, leave one mass unknown via "
+            "--solve-for, supply a target yield with --Y-kt. Bisection "
+            "on the named mass."
+        ),
+    )
+    p.add_argument("--Y-kt", type=float, required=True,
+                   help="Target total yield in kt")
+    p.add_argument("--solve-for", required=True, choices=SOLVABLE_MASSES,
+                   help="Which mass parameter to solve for")
+    _add_mass_arguments(p)
 
 
 def _add_xsec(sub: argparse._SubParsersAction) -> None:
@@ -249,6 +341,41 @@ def _do_secondary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _do_total(args: argparse.Namespace) -> int:
+    kw = _build_total_kwargs(args)
+    r = yield_kt_total(**kw)
+    print("Multi-stage yield estimator:")
+    print(f"  Primary: m_pu={args.m_pu} kg, m_heu={args.m_heu} kg, eta={args.eta}")
+    if args.m_dt > 0:
+        print(f"  Boost  : m_dt={args.m_dt} g")
+    if args.m_li6d_layer > 0 or args.m_u238_layer > 0:
+        print(f"  Layer  : LiD={args.m_li6d_layer} kg ({args.li6_layer*100:.0f}% Li-6), "
+              f"U-238={args.m_u238_layer} kg")
+    if args.m_lid_secondary > 0 or args.m_spark > 0 or args.m_u238_tamper > 0:
+        print(f"  Second.: LiD={args.m_lid_secondary} kg, spark={args.m_spark} kg "
+              f"({args.spark_mat}), U-238 tamper={args.m_u238_tamper} kg")
+    if args.m_u238_jacket > 0:
+        print(f"  Jacket : U-238={args.m_u238_jacket} kg")
+    print()
+    print(r)
+    return 0
+
+
+def _do_solve(args: argparse.Namespace) -> int:
+    kw = _build_total_kwargs(args)
+    m_solved = solve_mass(target_Y_kt=args.Y_kt, unknown=args.solve_for, **kw)
+    label = args.solve_for
+    units = "g" if label == "m_dt_g" else "kg"
+    print(f"Solving for {label} given target yield {args.Y_kt} kt ...")
+    print(f"  Result: {label} = {m_solved:.4g} {units}")
+    # Show the resulting forward breakdown for sanity
+    kw[label] = m_solved
+    r = yield_kt_total(**kw)
+    print()
+    print(r)
+    return 0
+
+
 def _do_xsec(args: argparse.Namespace) -> int:
     cols = []
     if args.reaction in ("DT", "all"):
@@ -314,6 +441,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
+    _add_total(sub)
+    _add_solve(sub)
     _add_boost(sub)
     _add_layer_cake(sub)
     _add_secondary(sub)
@@ -321,6 +450,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_plasma(sub)
 
     args = parser.parse_args(argv)
+    if args.cmd == "total":
+        return _do_total(args)
+    if args.cmd == "solve":
+        return _do_solve(args)
     if args.cmd == "boost":
         return _do_boost(args)
     if args.cmd == "layercake":

@@ -250,6 +250,60 @@ tnyield boost --mDT 4 --rho-DT 0.6 --T 4 --tau 1e-7 --Y0 4.95
 # Boosted total yield : 6.17 kt  (boost ratio: 1.25 x)
 ```
 
+## Multi-stage estimator (yield_kt_total)
+
+A single call that composes all five energy channels — primary
+(`fissionyield.yield_kt_composite`), boost, layer cake, secondary, and
+tertiary FFF jacket — plus an inverse solver that fixes everything
+except one mass and bisects to a target yield.
+
+```python
+from tnyield import yield_kt_total, solve_mass
+
+# Joe-4 / Sloika style
+r = yield_kt_total(
+    m_pu_kg=4.0, m_heu_kg=6.0, eta=2.8,
+    m_li6d_layer_kg=50.0, li6_enrichment_layer=0.40,
+    m_u238_jacket_kg=300.0,
+)
+print(r)
+# Total yield                :    425.581 kt
+
+# Inverse: how much Li-6 D to hit 500 kt?
+m_li6d = solve_mass(
+    target_Y_kt=500.0,
+    unknown="m_li6d_layer_kg",
+    m_pu_kg=4.0, m_heu_kg=6.0, eta=2.8,
+    li6_enrichment_layer=0.40, m_u238_jacket_kg=300.0,
+)
+# ~ 61.3 kg
+```
+
+Inputs (all default to zero — only supply the masses you actually have):
+
+| arg                  | meaning |
+|----------------------|---------|
+| `m_pu_kg`, `m_heu_kg`, `eta` | Pu and HEU in the primary, compression |
+| `m_dt_g`             | DT boost gas (grams) |
+| `m_li6d_layer_kg`    | LiD layer mass (Sloika fusion layer) |
+| `m_u238_layer_kg`    | U-238 immediately around the LiD layer |
+| `m_lid_secondary_kg` | LiD fuel inside the Teller-Ulam secondary |
+| `m_spark_plug_kg`    | Spark-plug fissile mass (HEU or Pu) |
+| `m_u238_tamper_kg`   | U-238 tamper around the secondary LiD |
+| `m_u238_jacket_kg`   | Outermost FFF jacket (third F) |
+
+Any of those nine masses can be the `unknown` for `solve_mass`. CLI
+equivalents:
+
+```
+tnyield total --m-pu 4 --m-heu 6 --eta 2.8 --m-li6d-layer 50 \
+              --li6-layer 0.40 --m-u238-jacket 300
+
+tnyield solve --Y-kt 500 --solve-for m_li6d_layer_kg \
+              --m-pu 4 --m-heu 6 --eta 2.8 --li6-layer 0.40 \
+              --m-u238-jacket 300
+```
+
 ## Caveats
 
 These are estimators, not simulations.  In particular:
