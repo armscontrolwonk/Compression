@@ -146,11 +146,137 @@ Aliases include `WGPu` → `delta-WGPu`, `HEU` → `WGU-93.5`, etc. Run
 pytest
 ```
 
+# tnyield — thermonuclear-effects companion
+
+Closed-form back-of-envelope estimators for **DT-boosted fission**,
+**layer-cake / Sloika**, and **Teller-Ulam secondary** yields.  All
+equations are from D.E.G. Barroso, *A Física dos Explosivos Nucleares*
+(SBPC, 2009).  Equation numbers in the source code refer to that book.
+
+The package follows the same idioms as `fissionyield`: plug numbers into
+one or two equations, get a yield back.  No PDE solvers, no
+3-temperature hydrodynamics — those are well outside what a
+back-of-envelope tool can deliver.
+
+## Modules
+
+| module             | purpose |
+|--------------------|---------|
+| `constants`        | universal constants and unit conversions (CGS) |
+| `reactions`        | Q-values, atomic masses, per-mass energy yields |
+| `cross_sections`   | `<σv>` for DT (10.40), DD (10.48), D-He³ (10.49); Li-6(n,T) |
+| `plasma`           | mean free paths (10.10-10.13), ρR thresholds, blackbody EOS for the Section 10.4.2 ablation calculation, Lindl burn fraction |
+| `boost`            | DT-boosted fission primary (Ch. 9, Eqs. 9.1-9.3) |
+| `layer_cake`       | Sloika fission-fusion-fission decomposition |
+| `secondary`        | Teller-Ulam radiation-driven secondary (Ch. 10.4-10.7) |
+
+## CLI
+
+The `tnyield` command has five subcommands.
+
+Tabulate Maxwellian `<σv>` for DT, DD, D-He³ at several temperatures:
+
+```
+tnyield xsec --T-keV 1 5 10 20 50 100 200
+```
+
+Estimate a boosted primary (Table 9-2 R = 5.2 cm Pu sphere example —
+4 g DT, baseline 0.3 kt):
+
+```
+tnyield boost --mDT 8.48 --rho-DT 0.6 --T 4 --tau 1e-7 --Y0 0.3
+```
+
+Compose a Sloika layer-cake yield (primary + LiD + U-238 outer shell):
+
+```
+tnyield layercake --Yp 100 --mLiD 50 --mU 300 --li6 0.4
+```
+
+W-87-like Teller-Ulam secondary with parameters tuned to match
+Table 10-11:
+
+```
+tnyield secondary --Yp 122 --mLiD 50 --mU 1320 --mSP 10 \
+                  -c 80 --LiD-burn 0.035 --U238-burn 0.0018
+```
+
+Section 10.4.2 ablation calculation (5 kt deposited in Li diffuser →
+~21 MK, ~1070 Mbar):
+
+```
+tnyield plasma ablation --E-kt 5 --V-cm3 9.14e4 --N-cm3 5e22 --Z 3
+```
+
+Mean free paths for fusion neutrons and Planck-averaged radiation:
+
+```
+tnyield plasma mfp --rho 0.85 --T-keV 10
+```
+
+Lindl burn fraction `f = ρR / (ρR + H_B)`:
+
+```
+tnyield plasma burnfrac --rhoR 7 --H-B 7
+```
+
+## Library
+
+```python
+from tnyield import (
+    sigma_v_DT, sigma_v_DD, sigma_v_DHe3,
+    boosted_yield, layer_cake_yield, secondary_yield,
+    ablation_pressure_from_energy,
+)
+
+# Boost a 0.3 kt primary with 8.48 g of DT
+r = boosted_yield(
+    mass_DT_g=8.48, rho_DT_g_per_cm3=0.6, T_keV=4.0,
+    tau_s=1e-7, Y_baseline_kt=0.3,
+)
+print(r)
+```
+
+## Pipeline: fissionyield → tnyield
+
+The two packages compose: use `fissionyield` to estimate the primary
+fission yield, then feed it to `tnyield` for the thermonuclear stage.
+
+```
+fissionyield solve --material delta-WGPu --mass 6 --compression 2.5
+# Yield Y : 4.95 kt
+
+tnyield boost --mDT 4 --rho-DT 0.6 --T 4 --tau 1e-7 --Y0 4.95
+# Boosted total yield : 6.17 kt  (boost ratio: 1.25 x)
+```
+
+## Caveats
+
+These are estimators, not simulations.  In particular:
+
+- The DT-boost "extra fissions per fusion neutron" multiplier is
+  empirical; the book does not give a closed-form expression for it.
+  Default `--mult 8` matches the R = 5.2 cm Pu row of Table 9-2 to
+  within a factor of ~4.  Values from 5 to 20 are plausible.
+- The Lindl burn-fraction formula `f = ρR / (ρR + H_B)` assumes ideal
+  hot-spot ignition with full burn propagation; real Teller-Ulam
+  secondaries achieve a few per cent of that, because of finite
+  Marshak-wave propagation time, non-uniform compression, and rapid
+  disassembly.  Override the auto-computed value with `--LiD-burn` if
+  you want realistic results.
+- The U-238 tamper burn fraction is mass-based; reasonable defaults
+  are ~10 % for a thin Sloika layer and ~1 % for a thick Teller-Ulam
+  tamper.
+
 ## References
 
+- D.E.G. Barroso, *A Física dos Explosivos Nucleares*, 2ª edição, Rio
+  de Janeiro: SBPC (2009).  [PDF](https://github.com/armscontrolwonk/nuclear-stuff/blob/main/A-fisica-dos-explosivos-nucleares.pdf)
 - T.B. Cochran, *Bare Homogeneous Fast Fission Device Using One-Group
   Diffusion Theory*, DRAFT, August 1, 1994, rev. March 17, 2007.
 - T.B. Cochran and C.E. Paine, *The Amount of Plutonium and
   Highly-Enriched Uranium Needed for Pure Fission Nuclear Weapons*,
   NRDC, revised 13 April 1995.
 - R. Serber, *The Los Alamos Primer* (1992), pp. 38–43.
+- J.D. Lindl, *Inertial Confinement Fusion* (1998), for the
+  `f = ρR / (ρR + H_B)` burn-fraction formula.
