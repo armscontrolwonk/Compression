@@ -508,10 +508,12 @@ def test_compression_composite_bad_inputs():
     "name,eta_expected",
     [
         # fit-eta values under the default Serber-b calibration
-        ("SANDSTONE X-Ray", 3.633),
-        ("RDS-4",           2.495),
-        ("Low Tony",        2.681),
-        ("CHIC-12",         5.466),
+        ("SANDSTONE X-Ray",       3.633),
+        ("RDS-4",                 2.495),
+        ("Buffalo Kite",          4.670),
+        ("Low Tony",              2.681),
+        ("Kazakh effects device", 5.476),  # design only; not a tested yield
+        ("CHIC-12",               5.466),
     ],
 )
 def test_historical_fit_eta(name, eta_expected):

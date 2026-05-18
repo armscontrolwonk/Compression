@@ -123,6 +123,30 @@ _ANCHORS: tuple[HistoricalTest, ...] = (
         source="User-supplied (see session notes).",
     ),
     HistoricalTest(
+        name="Buffalo Kite",
+        year=1956,
+        country="UK",
+        pu_kg=2.0,
+        heu_kg=0.0,
+        yield_kt=3.0,
+        notes=(
+            "First UK air-dropped nuclear weapon test (11 October 1956, "
+            "Maralinga). Pure-Pu core (no HEU shell). Yield-and-mass "
+            "figures declassified from a 1956 AWRE letter on file at the "
+            "UK Public Record Office; corroborates the 'medium-tech' "
+            "weapon design curve in NRDC's Figure 2 per Cochran 1998."
+        ),
+        source=(
+            "Cochran, *Technological Issues Related to the Proliferation "
+            "of Nuclear Weapons*, NRDC 1998, footnote 14; primary "
+            "attribution: letter from R. Cook (AWRE) to Director General "
+            "Atomic Weapons, 27 June 1956, UK Public Record Office (via "
+            "D. Forster letter to NRDC, 28 October 1995). Also Norris et "
+            "al., *Nuclear Weapons Databook Vol. V: British, French and "
+            "Chinese Nuclear Weapons* (Westview, 1994), p. 400."
+        ),
+    ),
+    HistoricalTest(
         name="Low Tony",
         year=1960,
         country="UK",
@@ -145,6 +169,33 @@ _ANCHORS: tuple[HistoricalTest, ...] = (
             "Establishment, Controllable Document A/1171 (AWPAC/4/5), "
             "31 December 1959, Table I, page 1; declassified per stamp "
             "on document. Yield per session-supplied context."
+        ),
+    ),
+    HistoricalTest(
+        name="Kazakh effects device",
+        year=1991,
+        country="USSR",
+        pu_kg=1.0,
+        heu_kg=0.0,
+        yield_kt=0.3,
+        notes=(
+            "CAVEAT: this entry is a PLANNED yield specification, NOT an "
+            "observed test result. The device was a Soviet nuclear-effects "
+            "test device emplaced in a horizontal tunnel at the "
+            "Semipalatinsk (Kazakh) test site in May 1991 with 'a total "
+            "mass of almost 1 kg of plutonium' and a planned yield of "
+            "'0.3 kilotons.' It was never detonated; Russia disclosed in "
+            "May 1995 that the device's destruction (dismantled in place) "
+            "was imminent, following Kazakhstan's inheritance of the test "
+            "infrastructure. Cochran (1998) cites the design as 'very "
+            "close to the low end of the high-tech weapon design curve' "
+            "in Figure 2. Pure-Pu, no HEU."
+        ),
+        source=(
+            "Cochran, *Technological Issues Related to the Proliferation "
+            "of Nuclear Weapons*, NRDC 1998, footnote 14; original "
+            "disclosure: Victor Litovkin, 'Destroy Nuclear Device!...', "
+            "*Moscow Izvestiya*, 23 May 1995, p. 1."
         ),
     ),
     HistoricalTest(

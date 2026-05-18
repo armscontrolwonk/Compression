@@ -235,22 +235,33 @@ This is the "Path 1" interpretation — the model's *relative* predictions
 (yield vs. mass, geometry, compression) are trusted; the η that fits the
 historical record is taken as the effective compression actually achieved.
 
-Five historical composite-core tests give a coherent picture under this
+Seven historical anchors give a coherent picture under this
 interpretation (fit-η under the default Serber-b calibration; rigorous
 values in parentheses):
 
-| Test              | Pu (kg) | HEU (kg) | Yield (kt) | Fit η (Serber / rigorous) |
-|-------------------|--------:|---------:|-----------:|---------------------------|
-| Fat Man (1945)    |     6.1 |      0.0 |         20 |  3.02 / 3.02 (pure Pu)    |
-| SANDSTONE X-Ray (1948) | 2.38 | 4.77    |         37 |  3.63 / 3.35              |
-| RDS-4 (1953)      |     4.2 |      6.8 |         28 |  2.50 / 2.34              |
-| Low Tony (1960)   |     0.9 |      5.6 |          1 |  2.68 / 2.55†             |
-| CHIC-12 (PRC)     |     2.0 |      0.5 |         15 |  5.47 / 5.35*             |
+| Test                       | Pu (kg) | HEU (kg) | Yield (kt) | Fit η (Serber / rigorous) |
+|----------------------------|--------:|---------:|-----------:|---------------------------|
+| Fat Man (1945)             |     6.1 |      0.0 |       20   |  3.02 / 3.02 (pure Pu)    |
+| SANDSTONE X-Ray (1948)     |    2.38 |     4.77 |       37   |  3.63 / 3.35              |
+| RDS-4 (1953)               |     4.2 |      6.8 |       28   |  2.50 / 2.34              |
+| Buffalo Kite (1956)        |     2.0 |      0.0 |        3   |  4.67 / 4.67 (pure Pu)†   |
+| Low Tony (1960)            |     0.9 |      5.6 |        1   |  2.68 / 2.55‡             |
+| Kazakh effects device (1991) | 1.0 |      0.0 |        0.3 |  5.48 / 5.48 (pure Pu)§   |
+| CHIC-12 (PRC)              |     2.0 |      0.5 |       15   |  5.47 / 5.35*             |
 
 *CHIC-12 may have been boosted; the fit-η is an upper bound on the
 pure-fission compression.
-†Low Tony masses are from declassified UK MoD/AWRE Controllable
+†Buffalo Kite (UK) was the first British air-dropped test (11 Oct 1956,
+Maralinga). Masses from a declassified 1956 AWRE letter on file at the
+UK Public Record Office.
+‡Low Tony masses are from declassified UK MoD/AWRE Controllable
 Document A/1171 (31 December 1959).
+§Kazakh device is a *planned* yield (~0.3 kt) for a Soviet nuclear-
+effects test device emplaced in 1991 at Semipalatinsk. **It was never
+detonated** — Russia disclosed in 1995 that the device was being
+dismantled in place after Kazakhstan inherited the test infrastructure.
+Included here as a design-specification corroboration point, not a
+tested yield.
 
 Use `fissionyield historical` to list the table, and
 `fissionyield plot-historical` to render fit-η versus test year

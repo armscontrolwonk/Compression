@@ -927,7 +927,9 @@ def _do_plot_historical(args: argparse.Namespace) -> int:
             "Fat Man": (4, 8),
             "SANDSTONE X-Ray": (4, 8),
             "RDS-4": (4, -14),
-            "Low Tony": (4, 8),
+            "Buffalo Kite": (4, 8),
+            "Low Tony": (4, -14),
+            "Kazakh effects device": (-10, 8),
             "CHIC-12": (-10, -18),
         }
         for t, year, eta in rows:
