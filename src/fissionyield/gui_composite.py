@@ -339,7 +339,9 @@ class CompositePlotPanel(QWidget):
         self._canvas = FigureCanvas(self._figure)
         layout.addWidget(self._canvas, stretch=1)
 
-        self.replot()
+        # The first replot is deferred to MainWindow.__init__ after every
+        # tab has been assigned, because replot() reads materials via
+        # the MainWindow -> CompositeTab delegation chain.
 
     def _on_axis_changed(self, axis_id: int) -> None:
         if axis_id == 0:  # vs Pu mass; fixed: shell mass, eta
@@ -730,6 +732,9 @@ class MainWindow(QMainWindow):
             "Composite cores + historical anchor browser. "
             "Default calibration: Serber-b (Cochran eq. 6.60)."
         )
+
+        # First render -- safe to do now that every tab is assigned.
+        self._composite_tab.replot()
 
     def calibration(self):
         return SERBER_B if self._calib_group.checkedId() == 0 else 1.0
