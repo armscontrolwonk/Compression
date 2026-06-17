@@ -111,6 +111,21 @@ fissionyield plot --material delta-WGPu WGU --vs mass \
     --mass-range 1 20 --fixed-compression 2.5
 ```
 
+## GUI
+
+A lite PySide6 desktop GUI with the solver on the left and an embedded
+plot on the right:
+
+```
+pip install -e ".[gui]"
+fissionyield-gui
+```
+
+Pick a material and model at the top; on the left choose which of
+`{M, η, Y}` to solve for and enter the other two; on the right toggle
+between *vs Mass* / *vs Compression*, set the sweep range and the
+fixed-value list, then **Update plot**.
+
 ## Library
 
 ```python
