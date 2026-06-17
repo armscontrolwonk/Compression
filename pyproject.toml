@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 fissionyield = "fissionyield.cli:main"
 fissionyield-gui = "fissionyield.gui:main"
+fissionyield-gui-composite = "fissionyield.gui_composite:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]

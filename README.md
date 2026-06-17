@@ -113,18 +113,50 @@ fissionyield plot --material delta-WGPu WGU --vs mass \
 
 ## GUI
 
-A lite PySide6 desktop GUI with the solver on the left and an embedded
-plot on the right:
+Two PySide6 desktop programs are shipped. Both require the optional
+`[gui]` extra:
 
 ```
 pip install -e ".[gui]"
-fissionyield-gui
 ```
 
-Pick a material and model at the top; on the left choose which of
-`{M, η, Y}` to solve for and enter the other two; on the right toggle
-between *vs Mass* / *vs Compression*, set the sweep range and the
-fixed-value list, then **Update plot**.
+### `fissionyield-gui-composite` (tabbed; composite cores + anchors)
+
+The current/recommended program. A tabbed window covering the composite
+work:
+
+- **Composite Pit** tab — pick inner Pu and outer shell materials,
+  enter `M_Pu` / `M_HEU` / `η`, solve for yield or back-solve `η`. The
+  right pane plots Y against Pu mass, shell mass, or compression with
+  configurable sweep ranges and fixed-value lists. Eigenvalue `α` and
+  critical compression `η_c` are reported in the result panel.
+- **Historical Anchors** tab — browse the seeded anchor library
+  (Fat Man, SANDSTONE X-Ray, RDS-4, Buffalo Kite, Low Tony, Kazakh
+  effects device, CHIC-12), with composite-only / exclude-boosted /
+  include-undated filters. Per-anchor notes and citations show in the
+  detail pane; the right pane is the fit-η-vs-year trajectory plot,
+  refit live whenever the Calibration toggle changes.
+
+The Calibration toggle in the top bar — **Serber-b (default)** vs
+**Rigorous (no calibration)** — propagates across both tabs. Both
+panels have a *Save plot…* button.
+
+```
+fissionyield-gui-composite
+```
+
+### `fissionyield-gui` (legacy; single material)
+
+The original single-window GUI, kept for users on the older
+single-material workflow. Solver on the left, plot on the right;
+material + model (Cochran 6.57 / 6.49) selectors at the top; choose
+which of `{M, η, Y}` to solve for and enter the other two; toggle
+between *vs Mass* / *vs Compression* in the plot. No composite
+support, no anchor library — those live in `fissionyield-gui-composite`.
+
+```
+fissionyield-gui
+```
 
 ## Library
 
