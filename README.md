@@ -129,7 +129,11 @@ work:
   enter `M_Pu` / `M_HEU` / `η`, solve for yield or back-solve `η`. The
   right pane plots Y against Pu mass, shell mass, or compression with
   configurable sweep ranges and fixed-value lists. Eigenvalue `α` and
-  critical compression `η_c` are reported in the result panel.
+  critical compression `η_c` are reported in the result panel. The
+  **Pit type** toggle in the top bar switches between *Composite (Pu +
+  shell)* and *Single material* — in single-material mode the shell
+  material and HEU-mass inputs hide, the chosen material is treated as
+  the entire pit, and the *vs Shell mass* plot axis is hidden.
 - **Historical Anchors** tab — browse the seeded anchor library
   (Fat Man, SANDSTONE X-Ray, RDS-4, Buffalo Kite, Low Tony, Kazakh
   effects device, CHIC-12), with composite-only / exclude-boosted /
@@ -137,9 +141,9 @@ work:
   detail pane; the right pane is the fit-η-vs-year trajectory plot,
   refit live whenever the Calibration toggle changes.
 
-The Calibration toggle in the top bar — **Serber-b (default)** vs
-**Rigorous (no calibration)** — propagates across both tabs. Both
-panels have a *Save plot…* button.
+The Pit type and Calibration toggles in the top bar — **Serber-b
+(default)** vs **Rigorous (no calibration)** — propagate across both
+tabs. Both panels have a *Save plot…* button.
 
 ```
 fissionyield-gui-composite

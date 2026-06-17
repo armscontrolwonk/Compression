@@ -132,24 +132,27 @@ class CompositeSolverPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Materials box
+        # Materials box. Inner/Outer labels and the shell row are hidden
+        # in single-material mode.
         mat_box = QGroupBox("Materials")
         mat_form = QFormLayout(mat_box)
+        self._pu_label = QLabel("Inner (Pu):")
         self._pu_combo = QComboBox()
         for mat in MATERIALS.values():
             self._pu_combo.addItem(mat.name, mat.key)
         idx = self._pu_combo.findData("delta-WGPu")
         if idx >= 0:
             self._pu_combo.setCurrentIndex(idx)
-        mat_form.addRow("Inner (Pu):", self._pu_combo)
+        mat_form.addRow(self._pu_label, self._pu_combo)
 
+        self._shell_label = QLabel("Outer (Shell):")
         self._shell_combo = QComboBox()
         for mat in MATERIALS.values():
             self._shell_combo.addItem(mat.name, mat.key)
         idx = self._shell_combo.findData("WGU-93.5")
         if idx >= 0:
             self._shell_combo.setCurrentIndex(idx)
-        mat_form.addRow("Outer (Shell):", self._shell_combo)
+        mat_form.addRow(self._shell_label, self._shell_combo)
         layout.addWidget(mat_box)
 
         # Solve-for radio
@@ -167,15 +170,17 @@ class CompositeSolverPanel(QWidget):
         tlayout.addStretch(1)
         layout.addWidget(target_box)
 
-        # Inputs
+        # Inputs. The HEU row (label + spin) is hidden in single-material mode.
         in_box = QGroupBox("Inputs")
         form = QFormLayout(in_box)
         self._pu_mass = _make_spin(0.0, 1e6, 3, 4.0)
         self._heu_mass = _make_spin(0.0, 1e6, 3, 8.0)
         self._eta = _make_spin(0.001, 1e3, 4, 2.5, step=0.1)
         self._yield = _make_spin(0.0, 1e9, 4, 20.0, step=1.0)
-        form.addRow("Pu mass M_Pu (kg):", self._pu_mass)
-        form.addRow("HEU mass M_HEU (kg):", self._heu_mass)
+        self._pu_mass_label = QLabel("Pu mass M_Pu (kg):")
+        self._heu_mass_label = QLabel("HEU mass M_HEU (kg):")
+        form.addRow(self._pu_mass_label, self._pu_mass)
+        form.addRow(self._heu_mass_label, self._heu_mass)
         form.addRow("Compression η:", self._eta)
         form.addRow("Yield Y (kt):", self._yield)
         layout.addWidget(in_box)
@@ -202,6 +207,20 @@ class CompositeSolverPanel(QWidget):
     def shell_material(self) -> Material:
         return get_material(self._shell_combo.currentData())
 
+    def apply_pit_type(self, pit_type: str) -> None:
+        """Show/hide and relabel widgets for composite vs single-material pit."""
+        single = pit_type == "single"
+        self._shell_label.setVisible(not single)
+        self._shell_combo.setVisible(not single)
+        self._heu_mass_label.setVisible(not single)
+        self._heu_mass.setVisible(not single)
+        if single:
+            self._pu_label.setText("Material:")
+            self._pu_mass_label.setText("Mass M (kg):")
+        else:
+            self._pu_label.setText("Inner (Pu):")
+            self._pu_mass_label.setText("Pu mass M_Pu (kg):")
+
     def _on_target_changed(self, target_id: int) -> None:
         # 0 = solve yield -> eta is input, yield is output
         # 1 = solve eta -> yield is input, eta is output
@@ -215,6 +234,9 @@ class CompositeSolverPanel(QWidget):
         target = self._target_group.checkedId()
         m_pu = self._pu_mass.value()
         m_heu = self._heu_mass.value()
+        if self._main.pit_type() == "single":
+            m_heu = 0.0
+            shell = pu
 
         try:
             if target == 0:
@@ -246,19 +268,33 @@ class CompositeSolverPanel(QWidget):
 
         cal_label = "Serber-b (default)" if isinstance(calib, dict) else "rigorous (no calibration)"
         M_total = m_pu + m_heu
-        lines = [
-            f"Pu (inner)        : {pu.name}",
-            f"Shell (outer)     : {shell.name}",
-            f"Pu mass M_Pu      : {m_pu:.4f} kg",
-            f"Shell mass M_HEU  : {m_heu:.4f} kg",
-            f"Total mass        : {M_total:.4f} kg",
-            f"Compression η     : {eta:.4f}",
-            f"Critical η_c      : {eta_c:.4f}",
-            f"Yield Y           : {Y:.4g} kt",
-            f"  solved for      : {solved[0]} = {solved[1]}",
-            f"Calibration       : {cal_label}",
-            f"α eigenvalue      : {alpha:.4f} /shake",
-        ]
+        if self._main.pit_type() == "single":
+            lines = [
+                f"Pit type          : single-material",
+                f"Material          : {pu.name}",
+                f"Mass M            : {m_pu:.4f} kg",
+                f"Compression η     : {eta:.4f}",
+                f"Critical η_c      : {eta_c:.4f}",
+                f"Yield Y           : {Y:.4g} kt",
+                f"  solved for      : {solved[0]} = {solved[1]}",
+                f"Calibration       : {cal_label}",
+                f"α eigenvalue      : {alpha:.4f} /shake",
+            ]
+        else:
+            lines = [
+                f"Pit type          : composite (Pu inner + shell outer)",
+                f"Pu (inner)        : {pu.name}",
+                f"Shell (outer)     : {shell.name}",
+                f"Pu mass M_Pu      : {m_pu:.4f} kg",
+                f"Shell mass M_HEU  : {m_heu:.4f} kg",
+                f"Total mass        : {M_total:.4f} kg",
+                f"Compression η     : {eta:.4f}",
+                f"Critical η_c      : {eta_c:.4f}",
+                f"Yield Y           : {Y:.4g} kt",
+                f"  solved for      : {solved[0]} = {solved[1]}",
+                f"Calibration       : {cal_label}",
+                f"α eigenvalue      : {alpha:.4f} /shake",
+            ]
         if eta <= eta_c:
             lines.append("note: η ≤ η_c (sub-critical or just critical) — no yield.")
         self._result.setPlainText("\n".join(lines))
@@ -344,11 +380,16 @@ class CompositePlotPanel(QWidget):
         # the MainWindow -> CompositeTab delegation chain.
 
     def _on_axis_changed(self, axis_id: int) -> None:
+        single = self._main.pit_type() == "single"
         if axis_id == 0:  # vs Pu mass; fixed: shell mass, eta
             self._xmin.setValue(0.1)
             self._xmax.setValue(5.0)
-            self._fixed1_label.setText("Shell masses (kg):")
-            self._fixed1_edit.setText("0, 4")
+            if single:
+                self._fixed1_label.setText("(unused)")
+                self._fixed1_edit.setText("0")
+            else:
+                self._fixed1_label.setText("Shell masses (kg):")
+                self._fixed1_edit.setText("0, 4")
             self._fixed2_label.setText("η values:")
             self._fixed2_edit.setText("2.5, 3.5, 5.0")
         elif axis_id == 1:  # vs shell mass; fixed: Pu mass, eta
@@ -361,15 +402,49 @@ class CompositePlotPanel(QWidget):
         else:  # vs compression; fixed: Pu mass, shell mass
             self._xmin.setValue(1.5)
             self._xmax.setValue(6.0)
-            self._fixed1_label.setText("Pu masses (kg):")
-            self._fixed1_edit.setText("0.5, 1.0")
-            self._fixed2_label.setText("Shell masses (kg):")
-            self._fixed2_edit.setText("4.0")
+            if single:
+                self._fixed1_label.setText("Masses (kg):")
+                self._fixed1_edit.setText("0.5, 1.0")
+                self._fixed2_label.setText("(unused)")
+                self._fixed2_edit.setText("0")
+            else:
+                self._fixed1_label.setText("Pu masses (kg):")
+                self._fixed1_edit.setText("0.5, 1.0")
+                self._fixed2_label.setText("Shell masses (kg):")
+                self._fixed2_edit.setText("4.0")
+        if single:
+            # Hide the unused fixed-list row.
+            in_pu_axis = axis_id == 0
+            in_eta_axis = axis_id == 2
+            self._fixed1_label.setVisible(not in_pu_axis)
+            self._fixed1_edit.setVisible(not in_pu_axis)
+            self._fixed2_label.setVisible(not in_eta_axis)
+            self._fixed2_edit.setVisible(not in_eta_axis)
+
+    def apply_pit_type(self, pit_type: str) -> None:
+        """Adjust visible axes/labels for composite vs single-material pit."""
+        single = pit_type == "single"
+        self._vs_shell.setVisible(not single)
+        if single and self._vs_group.checkedId() == 1:
+            # "vs Shell mass" no longer makes sense -- snap to vs Pu mass.
+            self._vs_pu.setChecked(True)
+        if not single:
+            # Restore visibility of every fixed-row that single-mode hid.
+            self._fixed1_label.setVisible(True)
+            self._fixed1_edit.setVisible(True)
+            self._fixed2_label.setVisible(True)
+            self._fixed2_edit.setVisible(True)
+        # Refresh fixed-row labels/values (and visibility, in single mode)
+        # for the now-current axis.
+        self._on_axis_changed(self._vs_group.checkedId())
 
     def replot(self) -> None:
         pu = self._main.pu_material()
         shell = self._main.shell_material()
         calib = self._main.calibration()
+        single = self._main.pit_type() == "single"
+        if single:
+            shell = pu
         axis_id = self._vs_group.checkedId()
 
         try:
@@ -378,6 +453,12 @@ class CompositePlotPanel(QWidget):
         except ValueError:
             QMessageBox.warning(self, "Bad input", "Could not parse fixed values.")
             return
+        # In single mode the shell-mass list is meaningless; coerce to [0].
+        if single:
+            if axis_id == 0:
+                f1 = [0.0]
+            elif axis_id == 2:
+                f2 = [0.0]
         if not f1 or not f2:
             QMessageBox.warning(
                 self, "Bad input", "Need at least one value in each fixed list."
@@ -399,27 +480,40 @@ class CompositePlotPanel(QWidget):
             for v2 in f2:
                 if axis_id == 0:    # x = Pu mass; v1 = shell mass; v2 = eta
                     ys = np.array([_safe_yield(x, v1, v2, pu, shell, calib) for x in xs])
-                    label = f"shell={v1:g} kg, η={v2:g}"
+                    if single:
+                        label = f"η={v2:g}"
+                    else:
+                        label = f"shell={v1:g} kg, η={v2:g}"
                 elif axis_id == 1:  # x = shell mass; v1 = Pu mass; v2 = eta
                     ys = np.array([_safe_yield(v1, x, v2, pu, shell, calib) for x in xs])
                     label = f"Pu={v1:g} kg, η={v2:g}"
                 else:               # x = eta; v1 = Pu mass; v2 = shell mass
                     ys = np.array([_safe_yield(v1, v2, x, pu, shell, calib) for x in xs])
-                    label = f"Pu={v1:g} kg, shell={v2:g} kg"
+                    if single:
+                        label = f"M={v1:g} kg"
+                    else:
+                        label = f"Pu={v1:g} kg, shell={v2:g} kg"
                 if not np.any(ys > floor):
                     skipped.append(label)
                     continue
                 ax.plot(xs, ys, label=label)
 
         if axis_id == 0:
-            ax.set_xlabel(f"Pu mass ({pu.key}) (kg)")
-            title = "Composite yield vs Pu mass"
+            if single:
+                ax.set_xlabel(f"Mass ({pu.key}) (kg)")
+                title = "Single-material yield vs mass"
+            else:
+                ax.set_xlabel(f"Pu mass ({pu.key}) (kg)")
+                title = "Composite yield vs Pu mass"
         elif axis_id == 1:
             ax.set_xlabel(f"Shell mass ({shell.key}) (kg)")
             title = "Composite yield vs shell mass"
         else:
             ax.set_xlabel(r"Compression $\eta = \rho/\rho_0$")
-            title = "Composite yield vs compression"
+            if single:
+                title = "Single-material yield vs compression"
+            else:
+                title = "Composite yield vs compression"
         ax.set_ylabel("Yield Y (kt)")
         if self._logy.isChecked():
             ax.set_yscale("log")
@@ -474,6 +568,11 @@ class CompositeTab(QWidget):
         layout.addWidget(splitter)
 
     def replot(self) -> None:
+        self._plot.replot()
+
+    def apply_pit_type(self, pit_type: str) -> None:
+        self._solver.apply_pit_type(pit_type)
+        self._plot.apply_pit_type(pit_type)
         self._plot.replot()
 
     def pu_material(self) -> Material:
@@ -704,8 +803,19 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(central)
         outer.setContentsMargins(8, 8, 8, 8)
 
-        # Top bar: calibration toggle
+        # Top bar: pit-type toggle + calibration toggle
         top = QHBoxLayout()
+        top.addWidget(QLabel("Pit type:"))
+        self._pit_group = QButtonGroup(self)
+        self._pit_composite = QRadioButton("Composite (Pu + shell)")
+        self._pit_single = QRadioButton("Single material")
+        self._pit_composite.setChecked(True)
+        self._pit_group.addButton(self._pit_composite, 0)
+        self._pit_group.addButton(self._pit_single, 1)
+        self._pit_group.idClicked.connect(self._on_pit_type_changed)
+        top.addWidget(self._pit_composite)
+        top.addWidget(self._pit_single)
+        top.addSpacing(20)
         top.addWidget(QLabel("Calibration:"))
         self._calib_group = QButtonGroup(self)
         self._cal_serber = QRadioButton("Serber-b (default)")
@@ -739,15 +849,26 @@ class MainWindow(QMainWindow):
     def calibration(self):
         return SERBER_B if self._calib_group.checkedId() == 0 else 1.0
 
+    def pit_type(self) -> str:
+        return "composite" if self._pit_group.checkedId() == 0 else "single"
+
     def pu_material(self) -> Material:
         return self._composite_tab.pu_material()
 
     def shell_material(self) -> Material:
+        # In single-material mode the shell material is the same as the
+        # inner material -- callers that need to know about pit type
+        # should ask via pit_type() and treat shell as ignored.
+        if self.pit_type() == "single":
+            return self._composite_tab.pu_material()
         return self._composite_tab.shell_material()
 
     def _on_calibration_changed(self, _id: int) -> None:
         self._composite_tab.replot()
         self._historical_tab.refresh()
+
+    def _on_pit_type_changed(self, _id: int) -> None:
+        self._composite_tab.apply_pit_type(self.pit_type())
 
 
 def main(argv: Optional[list[str]] = None) -> int:
