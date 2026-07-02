@@ -205,6 +205,40 @@ for f in historical.calibration_table():
 Each entry carries a `source` string; see the module for citations. Add a
 test by appending a `HistoricalTest(...)` with its provenance.
 
+### Design curve (mass vs yield)
+
+`fissionyield design-curve` plots the anchors at (total fissile mass, observed
+yield) against pure-Pu iso-compression contours — an NRDC-Figure-2-style view
+for placing a new design against the historical cloud. Pure-Pu anchors sit on
+the contour matching their fitted η; composites sit *below* the same-η pure-Pu
+contour because HEU is less efficient (Serber *b*=0.5). Each anchor is
+annotated with its own fitted η.
+
+```
+fissionyield design-curve -o design_curve.png
+fissionyield design-curve --eta 2 2.5 3 4 --mass-range 0.5 80
+```
+
+### Worked example: UK A/1171 warheads as bands
+
+`examples/uk_a1171_bands.py` estimates the seven designs from the declassified
+UK MoD/AWRE Table I (Controllable Document A/1171, 1959) as **yield bands**
+rather than points, sweeping each design's dominant latent inputs (primary η
+for all; plus boost multiplier, LiD layer burn, or secondary LiD burn). The
+result shows which designs are pin-down-able and which are not:
+
+```
+design             Pu  HEU   type              low  nominal    high   span
+Wee Gwen          1.6  2.4   pure fission     0.29    1.03     2.41     8x
+Low Tony          0.9  5.6   pure fission     1.08    2.81     5.70     5x
+Mk. 47            2.5 60.0   Teller-Ulam     92.0   146.1    357.8     4x
+```
+
+The barely-critical pure-fission designs span ~8x on compression alone; even
+the big Teller-Ulam devices are only good to a factor of several. Run
+`python examples/uk_a1171_bands.py` for the full table; see the module
+docstring for the mass interpretation and caveats.
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with

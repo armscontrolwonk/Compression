@@ -334,6 +334,98 @@ def _do_composite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_design_curve(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "design-curve",
+        help="Plot the historical anchors in (fissile mass, yield) space "
+             "with iso-eta contours (NRDC Figure 2 style).",
+        description=(
+            "Places each known test at (total fissile mass, observed yield) "
+            "against pure-Pu iso-compression contours, so a new design can "
+            "be read against the historical cloud. Each anchor is annotated "
+            "with the effective eta the model assigns it."
+        ),
+    )
+    p.add_argument("-o", "--output",
+                   help="Save figure to file instead of opening a window")
+    p.add_argument("--eta", type=float, nargs="+",
+                   default=[1.5, 2.0, 2.5, 3.0, 4.0, 5.0],
+                   help="Iso-eta contour levels (default: 1.5 2 2.5 3 4 5)")
+    p.add_argument("--mass-range", type=float, nargs=2, metavar=("MIN", "MAX"),
+                   default=[0.6, 70.0], help="Fissile-mass axis span in kg")
+    p.add_argument("--title", help="Override plot title")
+
+
+def _do_design_curve(args: argparse.Namespace) -> int:
+    import matplotlib.pyplot as plt
+
+    from . import historical
+
+    fig, ax = plt.subplots(figsize=(8.5, 6.0))
+
+    # Iso-eta contours for pure delta-WGPu (reference composition).
+    y_top = 3e4
+    masses = np.linspace(args.mass_range[0], args.mass_range[1], 400)
+    for eta in args.eta:
+        ys = np.array([yield_kt_composite(m, 0.0, eta) for m in masses])
+        good = ys > 0
+        ax.plot(masses[good], ys[good], color="0.6", lw=1.0, zorder=1)
+        # label at the contour's last point still inside the clipped view
+        vis = good & (ys < 0.9 * y_top)
+        if vis.any():
+            xr, yr = masses[vis][-1], ys[vis][-1]
+            ax.annotate(f"eta={eta:g}", (xr, yr), color="0.4", fontsize=8,
+                        ha="left", va="bottom", xytext=(2, 1),
+                        textcoords="offset points")
+
+    # Anchors, marker by category, annotated with fitted eta.
+    styles = {
+        "pu": ("o", "#1f77b4", "pure Pu"),
+        "composite": ("^", "#d62728", "composite"),
+        "boosted": ("*", "#9467bd", "boosted (eta = upper bound)"),
+    }
+    seen = set()
+    for f in historical.calibration_table():
+        t = f.test
+        if t.boosted:
+            key = "boosted"
+        elif t.is_composite:
+            key = "composite"
+        else:
+            key = "pu"
+        marker, color, lbl = styles[key]
+        ax.scatter(t.total_kg, t.yield_kt, marker=marker, s=110, color=color,
+                   edgecolor="black", linewidth=0.5, zorder=3,
+                   label=lbl if key not in seen else None)
+        seen.add(key)
+        ax.annotate(f"{t.name}\n(eta={f.eta_eff:.2f})",
+                    (t.total_kg, t.yield_kt), fontsize=7.5,
+                    xytext=(6, 4), textcoords="offset points", zorder=4)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_ylim(0.05, 3e4)   # focus on the populated cloud; hide the
+    #                          deep sub-yield tails of the onset cliffs
+    ax.set_xlabel("Total fissile mass (kg)")
+    ax.set_ylabel("Yield (kt)")
+    ax.set_title(args.title or
+                 "Fissile mass vs yield -- historical anchors on pure-Pu iso-eta")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(loc="lower right", fontsize=8)
+    fig.text(0.01, 0.01,
+             "Contours: pure delta-WGPu iso-compression. Composites/boosted "
+             "sit off them; each anchor's own fitted eta is annotated.",
+             fontsize=7, color="0.4")
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
+
+    if args.output:
+        fig.savefig(args.output, dpi=140)
+        print(f"wrote {args.output}")
+    else:
+        plt.show()
+    return 0
+
+
 def _add_anchors(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(
         "anchors",
@@ -403,6 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_list(sub)
     _add_composite(sub)
     _add_anchors(sub)
+    _add_design_curve(sub)
 
     args = parser.parse_args(argv)
     if args.cmd == "list":
@@ -415,6 +508,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_composite(args)
     if args.cmd == "anchors":
         return _do_anchors(args)
+    if args.cmd == "design-curve":
+        return _do_design_curve(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 
