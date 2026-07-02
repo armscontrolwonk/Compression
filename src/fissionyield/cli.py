@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from . import historical
 from .composite import effective_compression, yield_band, yield_kt_composite
 from .materials import MATERIALS, get_material
 from .model import MODELS, compression, kappa, mass_kg, yield_kt
@@ -333,6 +334,60 @@ def _do_composite(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_anchors(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "anchors",
+        help="Invert the historical-test library to effective compression "
+             "(the calibration ladder).",
+        description=(
+            "For each publicly-known test in the anchor library, invert its "
+            "observed yield to the effective compression eta the composite "
+            "model assigns, with knife-edge diagnostics (crits above "
+            "critical, elasticity). This is the honest calibration artifact: "
+            "per-device effective eta, not a single fudge factor."
+        ),
+    )
+    p.add_argument(
+        "--rigorous", action="store_true",
+        help="Disable Serber-b (use b_pu=b_heu=1.0, the uncorrected "
+             "one-group model) when inverting.",
+    )
+    p.add_argument(
+        "--sort", choices=["year", "eta", "crits"], default="year",
+        help="Sort order (default: year -- the calibration ladder).",
+    )
+
+
+def _do_anchors(args: argparse.Namespace) -> int:
+    kw = {"b_pu": 1.0, "b_heu": 1.0} if args.rigorous else {}
+    table = historical.calibration_table(**kw)
+    if args.sort == "eta":
+        table = sorted(table, key=lambda f: f.eta_eff)
+    elif args.sort == "crits":
+        table = sorted(table, key=lambda f: f.crits)
+
+    cal = "rigorous (b=1)" if args.rigorous else "Serber-b (1.0/0.5)"
+    print(f"Historical anchors -- effective compression  [calibration: {cal}]")
+    print(f"{'test':22} {'yr':>4} {'cc':>4} {'Pu':>5} {'HEU':>5} "
+          f"{'Y_kt':>6}  {'eta_eff':>7} {'eta_c':>6} {'crits':>6} {'elast':>6}")
+    print("-" * 84)
+    for f in table:
+        t = f.test
+        flag = " *boost" if t.boosted else ""
+        yr = t.year if t.year else "?"
+        print(f"{t.name:22} {yr:>4} {t.country:>4} {t.pu_kg:>5.2f} "
+              f"{t.heu_kg:>5.2f} {t.yield_kt:>6.2f}  {f.eta_eff:>7.3f} "
+              f"{f.eta_c:>6.3f} {f.crits:>6.2f} {f.elasticity:>6.1f}{flag}")
+    print()
+    print("eta_eff = compression reproducing the observed yield; "
+          "eta_c = yield onset;")
+    print("crits = (eta_eff/eta_c)^2 above critical; "
+          "elast = d ln Y / d ln eta (>>1 => knife-edge).")
+    print("* boosted: eta_eff is an UPPER bound (fusion not modeled). "
+          "Tampers not modeled.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fissionyield",
@@ -347,6 +402,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_plot(sub)
     _add_list(sub)
     _add_composite(sub)
+    _add_anchors(sub)
 
     args = parser.parse_args(argv)
     if args.cmd == "list":
@@ -357,6 +413,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_plot(args)
     if args.cmd == "composite":
         return _do_composite(args)
+    if args.cmd == "anchors":
+        return _do_anchors(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 

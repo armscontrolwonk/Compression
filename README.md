@@ -166,6 +166,45 @@ critical the device sits, i.e. how far off the knife-edge. Devices only a
 crit or two above critical (Low Tony) are compression-dominated; the band
 narrows as `crits` grows.
 
+## Historical anchors (calibration ladder)
+
+`fissionyield.historical` holds a small library of publicly-known tests
+(mass split, observed yield, citation). Inverting each one to its effective
+compression *is* the honest calibration artifact for this model — there is no
+single fudge factor, so the per-device η is what you compare.
+
+```
+fissionyield anchors                 # Serber-b, sorted by year
+fissionyield anchors --rigorous      # b=1 (uncorrected one-group)
+fissionyield anchors --sort crits    # order by distance off the knife-edge
+```
+
+```
+test                     yr   cc    Pu   HEU   Y_kt  eta_eff  eta_c  crits  elast
+Fat Man                1945  USA  6.10  0.00  20.00    3.021  1.634   3.42    5.9
+SANDSTONE X-Ray        1948  USA  2.38  4.77  37.00    3.633  1.652   4.84    4.8
+RDS-4                  1953 USSR  4.20  6.80  28.00    2.495  1.311   3.62    5.7
+Buffalo Kite           1956   UK  2.00  0.00   3.00    4.670  2.854   2.68    7.0
+Low Tony               1960   UK  0.90  5.60   1.00    2.681  1.963   1.87   10.6
+Kazakh effects device  1991 USSR  1.00  0.00   0.30    5.476  4.036   1.84   10.7
+CHIC-12                   ?  PRC  2.00  0.50  15.00    5.466  2.589   4.46    5.0 *boost
+```
+
+The empirical read: effective η clusters ~2.5–5.5, but the high-η entries
+(Buffalo Kite, Kazakh, CHIC-12) are all small-mass / few-crit devices where
+high compression is *required* to reach the yield — not evidence of more
+sophisticated implosion. Boosted entries (CHIC-12) are an upper bound on η
+because the fusion contribution isn't modeled; tampers aren't modeled either.
+
+```python
+from fissionyield import historical
+for f in historical.calibration_table():
+    print(f.test.name, round(f.eta_eff, 2), round(f.crits, 2))
+```
+
+Each entry carries a `source` string; see the module for citations. Add a
+test by appending a `HistoricalTest(...)` with its provenance.
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with
