@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from .composite import effective_compression, yield_band, yield_kt_composite
 from .materials import MATERIALS, get_material
 from .model import MODELS, compression, kappa, mass_kg, yield_kt
 
@@ -245,6 +246,93 @@ def _safe_yield(m: float, eta: float, mat, model: str) -> float:
     return yield_kt(m, eta, mat, model=model)
 
 
+def _add_composite(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "composite",
+        help="Two-region Pu+HEU core: forward yield (point or band) or "
+             "invert a known yield to effective compression.",
+        description=(
+            "Composite-core (inner Pu + outer HEU) yield tool. Give a "
+            "compression to get a forward yield; add --band to report a "
+            "range over an eta sweep with the local elasticity (knife-edge "
+            "signal). Give --yield instead to back out the effective "
+            "compression a device of that yield achieved."
+        ),
+    )
+    p.add_argument("--mass-pu", type=float, default=0.0, metavar="KG",
+                   help="Inner Pu (delta-WGPu) mass in kg (0 for pure HEU)")
+    p.add_argument("--mass-heu", type=float, default=0.0, metavar="KG",
+                   help="Outer HEU (WGU-93.5) mass in kg (0 for pure Pu)")
+    p.add_argument("--compression", "-c", type=float, metavar="ETA",
+                   help="Compression rho/rho_0 (forward mode)")
+    p.add_argument("--yield", dest="Y", type=float, metavar="KT",
+                   help="Known yield in kt (inverse mode: solve for eta)")
+    p.add_argument("--band", type=float, nargs="?", const=0.10, default=None,
+                   metavar="FRAC",
+                   help="Report a yield band over eta_nominal*(1-/+FRAC) "
+                        "(default FRAC=0.10). Forward mode only.")
+    p.add_argument("--eta-low", type=float, default=None, metavar="ETA",
+                   help="Explicit low end of the band sweep (implies --band)")
+    p.add_argument("--eta-high", type=float, default=None, metavar="ETA",
+                   help="Explicit high end of the band sweep (implies --band)")
+
+
+def _do_composite(args: argparse.Namespace) -> int:
+    if args.mass_pu <= 0 and args.mass_heu <= 0:
+        print("error: give a positive --mass-pu and/or --mass-heu",
+              file=sys.stderr)
+        return 2
+
+    label = f"{args.mass_pu:g} kg Pu + {args.mass_heu:g} kg HEU"
+
+    # Inverse mode: known yield -> effective compression.
+    if args.Y is not None:
+        if args.compression is not None:
+            print("note: --compression ignored in inverse (--yield) mode",
+                  file=sys.stderr)
+        fit = effective_compression(args.mass_pu, args.mass_heu, args.Y)
+        print(f"Composite core   : {label}")
+        print(f"Known yield      : {args.Y:g} kt")
+        print(f"  effective eta  : {fit.eta_eff:.3f}")
+        print(f"  2nd-crit eta_c : {fit.eta_c:.3f}  (yield onset)")
+        print(f"  crits above    : {fit.crits:.2f}  "
+              f"((eta_eff/eta_c)^2 -- how far off the knife-edge)")
+        print(f"  elasticity     : {fit.elasticity:.1f}  "
+              f"(d ln Y / d ln eta; >>1 => compression-dominated)")
+        return 0
+
+    # Forward mode requires a compression.
+    if args.compression is None:
+        print("error: give --compression (forward) or --yield (inverse)",
+              file=sys.stderr)
+        return 2
+
+    want_band = (args.band is not None
+                 or args.eta_low is not None
+                 or args.eta_high is not None)
+    if want_band:
+        frac = args.band if args.band is not None else 0.10
+        b = yield_band(args.mass_pu, args.mass_heu, args.compression,
+                       eta_low=args.eta_low, eta_high=args.eta_high, frac=frac)
+        print(f"Composite core   : {label}")
+        print(f"Nominal eta      : {b.eta_nominal:g}")
+        print(f"Yield band       : {b.y_low:.3g} .. [{b.y_nominal:.3g}] .. "
+              f"{b.y_high:.3g} kt")
+        print(f"  over eta        : {b.eta_low:.3f} .. {b.eta_high:.3f}")
+        print(f"  elasticity      : {b.elasticity:.1f}  "
+              f"(d ln Y / d ln eta at nominal)")
+        span = b.y_high / b.y_low if b.y_low > 0 else float("inf")
+        print(f"  band spans       : {span:.1f}x  "
+              f"(high/low -- a point estimate hides this)")
+        return 0
+
+    Y = yield_kt_composite(args.mass_pu, args.mass_heu, args.compression)
+    print(f"Composite core   : {label}")
+    print(f"Compression eta  : {args.compression:g}")
+    print(f"Yield            : {Y:.4g} kt")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fissionyield",
@@ -258,6 +346,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_solve(sub)
     _add_plot(sub)
     _add_list(sub)
+    _add_composite(sub)
 
     args = parser.parse_args(argv)
     if args.cmd == "list":
@@ -266,6 +355,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_solve(args)
     if args.cmd == "plot":
         return _do_plot(args)
+    if args.cmd == "composite":
+        return _do_composite(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 

@@ -122,6 +122,50 @@ print(compression(mass_kg=6.1, Y_kt=20.0, material=mat))       # eta for Y
 print(mass_kg(eta=2.5, Y_kt=1.0, material=mat))                # mass for Y
 ```
 
+## Composite cores and the compression-sensitivity problem
+
+For a two-region inner-Pu / outer-HEU core, `yield_kt_composite` solves the
+Cochran/Serber two-region one-group eigenvalue problem (Serber-*b* calibrated:
+*b*=1.0 for Pu, 0.5 for HEU, mass-weighted). Single-material limits route
+through Cochran eq. 6.49 and match his published numbers.
+
+The important caveat: for a **barely-supercritical** device the yield is
+hypersensitive to the compression η. The elasticity d(ln Y)/d(ln η) runs
+~5–11 across this whole design class, so a point yield estimate is false
+precision — and a single multiplicative "correction factor" fit to one device
+misgeneralizes, because the residual is really an *input* (η) uncertainty
+amplified by that elasticity, not a systematic bias. Two honest tools follow
+from this:
+
+```python
+from fissionyield import effective_compression, yield_band
+
+# INVERSE: back out the effective compression a known device achieved,
+# instead of a fudge factor. (Low Tony: 0.9 kg Pu + 5.6 kg HEU, ~1.0 kt.)
+fit = effective_compression(0.9, 5.6, 1.0)
+# fit.eta_eff=2.68, eta_c=1.96, crits=1.87, elasticity=10.6
+
+# FORWARD as a band, not a point: sweep eta and see how knife-edge it is.
+band = yield_band(0.9, 5.6, eta_nominal=3.0, frac=0.15)
+# 0.56 .. [2.81] .. 7.64 kt  -- a 13.6x span over +/-15% compression
+```
+
+CLI:
+
+```
+# forward point
+fissionyield composite --mass-pu 0.9 --mass-heu 5.6 -c 3.0
+# forward band (+/-15% eta)
+fissionyield composite --mass-pu 0.9 --mass-heu 5.6 -c 3.0 --band 0.15
+# inverse: known yield -> effective compression
+fissionyield composite --mass-pu 0.9 --mass-heu 5.6 --yield 1.0
+```
+
+`crits` is (η_eff/η_c)² — how many critical masses above the normal-density
+critical the device sits, i.e. how far off the knife-edge. Devices only a
+crit or two above critical (Low Tony) are compression-dominated; the band
+narrows as `crits` grows.
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with

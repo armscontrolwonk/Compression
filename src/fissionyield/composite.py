@@ -50,8 +50,15 @@ License: same as parent fissionyield package.
 from __future__ import annotations
 
 import math
+from collections import namedtuple
 
-__all__ = ["yield_kt_composite"]
+__all__ = [
+    "yield_kt_composite",
+    "effective_compression",
+    "yield_band",
+    "CompressionFit",
+    "YieldBand",
+]
 
 
 # Cochran Table 3.1 -- only the two materials this extract uses.
@@ -366,6 +373,159 @@ def yield_kt_composite(
 
     Y_raw = 0.9 * M_total * (delta_R * alpha) ** 2 * V_over_dV
     return correction_factor * b_eff * _KT_PER_RAW * Y_raw
+
+
+# ---------------------------------------------------------------------------
+# Inverse and uncertainty tools
+# ---------------------------------------------------------------------------
+#
+# Why these exist: for a barely-supercritical device the yield is
+# hypersensitive to the compression eta -- d(ln Y)/d(ln eta) can exceed 10,
+# so a single multiplicative "correction factor" fit to one device
+# misgeneralizes to every other. The honest tools are (a) invert a known
+# yield to the *effective compression* the design achieved, and (b) report a
+# forward yield as a *band* over a plausible eta range, with the local
+# elasticity as a knife-edge signal.
+
+CompressionFit = namedtuple(
+    "CompressionFit", ["eta_eff", "eta_c", "crits", "elasticity", "Y_kt"]
+)
+YieldBand = namedtuple(
+    "YieldBand",
+    ["y_low", "y_nominal", "y_high",
+     "eta_low", "eta_nominal", "eta_high", "elasticity"],
+)
+
+
+def _yield_elasticity(
+    m_pu_kg,
+    m_heu_kg,
+    eta,
+    *,
+    b_pu=_PU["b"],
+    b_heu=_HEU["b"],
+    correction_factor=1.0,
+    rel_step=1e-3,
+):
+    """Local elasticity d(ln Y)/d(ln eta) at compression `eta`.
+
+    Central-difference estimate of how sharply yield responds to a
+    fractional change in compression. Values >> 1 flag a "knife-edge"
+    device (barely supercritical) whose yield is dominated by the
+    uncertain compression input; values near 0 mean the yield is
+    insensitive to eta (well above critical). Returns NaN at or below
+    the yield onset, where the log-derivative is undefined.
+    """
+    d = eta * rel_step
+    kw = dict(b_pu=b_pu, b_heu=b_heu, correction_factor=correction_factor)
+    y0 = yield_kt_composite(m_pu_kg, m_heu_kg, eta, **kw)
+    y_lo = yield_kt_composite(m_pu_kg, m_heu_kg, eta - d, **kw)
+    y_hi = yield_kt_composite(m_pu_kg, m_heu_kg, eta + d, **kw)
+    if y0 <= 0.0 or y_lo <= 0.0 or y_hi <= 0.0:
+        return float("nan")
+    return ((y_hi - y_lo) / (2.0 * d)) * (eta / y0)
+
+
+def effective_compression(
+    m_pu_kg: float,
+    m_heu_kg: float,
+    Y_kt: float,
+    *,
+    b_pu: float = _PU["b"],
+    b_heu: float = _HEU["b"],
+    correction_factor: float = 1.0,
+) -> CompressionFit:
+    """Solve for the compression eta that reproduces a known yield.
+
+    The physically meaningful way to calibrate against a device of known
+    yield: instead of a multiplicative fudge factor, back out the
+    effective compression the design achieved.
+
+    Returns CompressionFit(eta_eff, eta_c, crits, elasticity, Y_kt):
+      eta_eff    : compression reproducing Y_kt
+      eta_c      : second-criticality compression (yield onset)
+      crits      : (eta_eff/eta_c)^2 -- critical masses above the
+                   normal-density critical; how far off the knife-edge
+      elasticity : d(ln Y)/d(ln eta) at eta_eff (>> 1 => knife-edge, the
+                   yield is dominated by compression uncertainty)
+    """
+    if m_pu_kg < 0 or m_heu_kg < 0:
+        raise ValueError("masses must be non-negative")
+    if m_pu_kg + m_heu_kg == 0:
+        raise ValueError("total mass must be positive")
+    if Y_kt <= 0:
+        raise ValueError("Y_kt must be positive to invert for compression")
+    if correction_factor <= 0 or b_pu <= 0 or b_heu <= 0:
+        raise ValueError("calibration values must be positive")
+
+    kw = dict(b_pu=b_pu, b_heu=b_heu, correction_factor=correction_factor)
+    eta_c = _critical_eta(m_pu_kg, m_heu_kg)
+
+    # Yield rises monotonically from 0 at eta_c; bracket upward then bisect.
+    lo = eta_c * (1.0 + 1e-9)
+    hi = max(eta_c * 2.0, eta_c + 1.0)
+    for _ in range(80):
+        if yield_kt_composite(m_pu_kg, m_heu_kg, hi, **kw) >= Y_kt:
+            break
+        hi *= 1.5
+    else:
+        raise RuntimeError(
+            f"could not bracket eta for Y={Y_kt} kt "
+            f"(m_pu={m_pu_kg}, m_heu={m_heu_kg}): yield unreachable"
+        )
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if yield_kt_composite(m_pu_kg, m_heu_kg, mid, **kw) < Y_kt:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-9 * max(1.0, hi):
+            break
+    eta_eff = 0.5 * (lo + hi)
+    crits = (eta_eff / eta_c) ** 2 if eta_c > 0 else float("inf")
+    elasticity = _yield_elasticity(m_pu_kg, m_heu_kg, eta_eff, **kw)
+    return CompressionFit(eta_eff, eta_c, crits, elasticity, Y_kt)
+
+
+def yield_band(
+    m_pu_kg: float,
+    m_heu_kg: float,
+    eta_nominal: float,
+    *,
+    eta_low: float | None = None,
+    eta_high: float | None = None,
+    frac: float = 0.10,
+    b_pu: float = _PU["b"],
+    b_heu: float = _HEU["b"],
+    correction_factor: float = 1.0,
+) -> YieldBand:
+    """Forward yield as a band over a compression range, not a point.
+
+    For barely-critical devices a point estimate is false precision:
+    yield can swing an order of magnitude across a plausible eta range.
+    Reports [low, nominal, high] yields plus the local elasticity so the
+    caller can see how knife-edge the prediction is.
+
+    If eta_low/eta_high are omitted they default to
+    eta_nominal*(1 -/+ frac) (default +/- 10% compression).
+
+    Returns YieldBand(y_low, y_nominal, y_high,
+                      eta_low, eta_nominal, eta_high, elasticity).
+    """
+    if eta_nominal <= 0:
+        raise ValueError("eta_nominal must be positive")
+    if not 0.0 <= frac < 1.0:
+        raise ValueError("frac must be in [0, 1)")
+    lo = eta_low if eta_low is not None else eta_nominal * (1.0 - frac)
+    hi = eta_high if eta_high is not None else eta_nominal * (1.0 + frac)
+    if lo <= 0 or hi <= 0 or lo > hi:
+        raise ValueError("require 0 < eta_low <= eta_high")
+    kw = dict(b_pu=b_pu, b_heu=b_heu, correction_factor=correction_factor)
+    y_lo = yield_kt_composite(m_pu_kg, m_heu_kg, lo, **kw)
+    y_no = yield_kt_composite(m_pu_kg, m_heu_kg, eta_nominal, **kw)
+    y_hi = yield_kt_composite(m_pu_kg, m_heu_kg, hi, **kw)
+    elasticity = _yield_elasticity(m_pu_kg, m_heu_kg, eta_nominal, **kw)
+    return YieldBand(y_lo, y_no, y_hi, lo, eta_nominal, hi, elasticity)
 
 
 # ---------------------------------------------------------------------------
