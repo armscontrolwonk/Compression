@@ -72,6 +72,49 @@ def burn_fraction_lindl(rho_R_g_per_cm2: float, H_B_g_per_cm2: float = 7.0) -> f
     return rho_R_g_per_cm2 / (rho_R_g_per_cm2 + H_B_g_per_cm2)
 
 
+# ---------- LiD burn fraction, grounded to Barroso's simulations ----------
+#
+# Barroso reports LiD/LiDT thermonuclear burn fractions as *outputs* of his
+# 3-temperature hydro code (LUI1-3T), so we can calibrate rather than guess:
+#
+#   - W-87 secondary (Table 10-11): ~90% of the D burns, ~61% of the Li-6,
+#     at a compressed rho-R ~150 g/cm^2. The Lindl form reproduces this with
+#     H_B ~ 17-20 g/cm^2, so we adopt H_B_LID_TAMPED = 20.
+#   - Table 10-9 (finite cylinder, WITH a U tamper but WITHOUT Li-6 breeding)
+#     shows burn rising from ~5% to ~56% with energy density, and a
+#     NO-TAMPER case collapsing to ~5% even at rho-R ~250: the tamper is
+#     essential for confinement, so an untamped charge is modeled with a
+#     much larger effective H_B.
+#   - Barroso stresses that a *large finite* LiD charge is "bastante mais
+#     ineficiente" than the idealized case: the burn wave cannot cross the
+#     whole mass before disassembly. So the Lindl value is an UPPER BOUND
+#     for charges much bigger than the ~2-3 kg W-87 fuel load; for those,
+#     the realistic burn is nearer the Table 10-9 regime (see
+#     LID_BURN_FRACTION_FINITE_FLOOR).
+
+H_B_LID_TAMPED = 20.0        # g/cm^2; W-87-calibrated (Table 10-11)
+H_B_LID_UNTAMPED = 4500.0    # g/cm^2; no-tamper collapse (Table 10-9, ~5%)
+LID_BURN_FRACTION_FINITE_FLOOR = 0.35   # realistic burn for a large charge
+LID_BURN_FRACTION_COMPACT_CEIL = 0.90   # W-87-scale optimized charge
+
+
+def lid_burn_fraction(rho_R_g_per_cm2: float, tamped: bool = True) -> float:
+    """LiD thermonuclear burn fraction, calibrated to Barroso.
+
+    Lindl saturation `f = rho-R / (rho-R + H_B)` with H_B grounded to the
+    W-87 simulation (H_B_LID_TAMPED, ~90% burn at rho-R ~150) or to the
+    tamperless collapse Barroso reports (H_B_LID_UNTAMPED, ~5%).
+
+    NOTE: this is the local/compact-charge value and an UPPER BOUND for
+    charges much larger than the ~2-3 kg W-87 load, where finite-media
+    burn-wave propagation limits the achievable fraction (Barroso,
+    Section 10.6). For large charges, band between
+    LID_BURN_FRACTION_FINITE_FLOOR and this value.
+    """
+    H_B = H_B_LID_TAMPED if tamped else H_B_LID_UNTAMPED
+    return burn_fraction_lindl(rho_R_g_per_cm2, H_B)
+
+
 # ---------- equation of state for the radiation case (Section 10.4.2) -----
 
 

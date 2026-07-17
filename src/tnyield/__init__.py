@@ -32,6 +32,7 @@ from .layer_cake import LayerCakeResult, layer_cake_yield, lid_yield_per_kg
 from .plasma import (
     ablation_pressure_from_energy,
     burn_fraction_lindl,
+    lid_burn_fraction,
     keV_to_kelvin,
     kelvin_to_keV,
     lambda_n_DT,
@@ -72,6 +73,7 @@ __all__ = [
     "lambda_n_LiDT",
     "lambda_p_LiDT",
     "burn_fraction_lindl",
+    "lid_burn_fraction",
     "plasma_energy_density",
     "plasma_pressure",
     "temperature_for_energy",

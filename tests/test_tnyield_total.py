@@ -90,20 +90,19 @@ def test_joe4_style_ballpark():
     assert 200.0 < r.Y_total_kt < 800.0
 
 
-def test_W87_style_with_overrides():
-    """W-87 is ~ 298 kt; defaults overshoot the U-238 jacket so we use
-    book-calibrated burn fractions."""
+def test_W87_style_ballpark():
+    """W-87 is ~ 298 kt. Uses the compact ~2.5 kg LiD charge and the
+    Barroso-grounded default burn fraction (~90%), not a hand-set value."""
     r = yield_kt_total(
         m_pu_kg=4.2, m_heu_kg=6.8, eta=3.0, m_dt_g=4.0,
-        m_lid_secondary_kg=50.0, m_spark_plug_kg=10.0,
+        m_lid_secondary_kg=2.5, m_spark_plug_kg=10.0,
         spark_plug_material="WGU",
         m_u238_tamper_kg=520.0, m_u238_jacket_kg=1320.0,
-        secondary_LiD_burn_fraction=0.035,
         u238_tamper_burn_fraction=0.0018,
         jacket_burn_fraction=0.0018,
     )
-    # Within a factor of 2 of 298 kt.
-    assert 150.0 < r.Y_total_kt < 600.0
+    # Within a factor of ~1.5 of 298 kt.
+    assert 200.0 < r.Y_total_kt < 450.0
 
 
 def test_spark_plug_material_switch():

@@ -54,7 +54,13 @@ ETA_NOMINAL = 3.0
 ETA_BAND = (2.7, 3.3)                      # +/-10% primary compression
 BOOST_MULT = (5.0, 8.0, 12.0)             # extra fissions per fusion neutron
 LID_LAYER_BURN = (0.05, 0.15, 0.30)       # Sloika layer burn fraction
-SEC_LID_BURN = (0.02, 0.035, 0.10)        # Teller-Ulam secondary burn fraction
+# Teller-Ulam secondary LiD burn fraction, grounded to Barroso: a well-
+# tamped compact charge reaches ~90% (W-87, Table 10-11), but these UK
+# charges are LARGE (Red Snow ~21 kg, Mk.47 ~48 kg LiD) and Barroso warns
+# large finite charges are "bastante mais ineficiente" (Section 10.6), so
+# we band from the finite-media floor (~35%, Table 10-9 regime) to the
+# compact ceiling (~90%).
+SEC_LID_BURN = (0.35, 0.60, 0.90)
 
 
 def eta_points(m_pu, m_heu):
@@ -152,11 +158,18 @@ def main():
               f"{d['kind']:14} {lo:>8.2f} {nom:>9.2f} {hi:>8.2f}  {span:>6}")
     print()
     print("Bands sweep each design's dominant latent inputs: primary eta for")
-    print("all; + boost multiplier (Tony), LiD layer burn (Sloika), or")
-    print("secondary LiD burn (Teller-Ulam). Fission-dominated designs show")
-    print("the widest spread (compression elasticity ~10); fusion-dominated")
-    print("secondaries are set by the burn fraction. Not measurements -- see")
-    print("module docstring for mass interpretation and caveats.")
+    print("all; + boost multiplier (Tony), LiD layer burn (Sloika), or the")
+    print("Barroso-grounded secondary LiD burn (Teller-Ulam, ~35-90%).")
+    print("Fission-dominated designs show the widest RELATIVE spread")
+    print("(compression elasticity ~10); the secondaries are set by the LiD")
+    print("burn fraction and fuel load.")
+    print()
+    print("Sanity check on the correction: Red Snow Mt -- literally the")
+    print("MEGATON variant -- now lands at ~0.5-1.2 Mt, bracketing the actual")
+    print("~1.1 Mt (Yellow Sun Mk.2), and Red Snow Kt stays sub-megaton, as")
+    print("their names demand. An earlier version of this model put Red Snow")
+    print("Mt at ~40-150 kt, from a ~20x-too-low LiD burn fraction.")
+    print("Not measurements -- see module docstring for interpretation/caveats.")
 
 
 if __name__ == "__main__":

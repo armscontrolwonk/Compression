@@ -231,11 +231,17 @@ result shows which designs are pin-down-able and which are not:
 design             Pu  HEU   type              low  nominal    high   span
 Wee Gwen          1.6  2.4   pure fission     0.29    1.03     2.41     8x
 Low Tony          0.9  5.6   pure fission     1.08    2.81     5.70     5x
-Mk. 47            2.5 60.0   Teller-Ulam     92.0   146.1    357.8     4x
+Red Snow Mt       1.6 11.0   Teller-Ulam     489     832     1244      3x
+Mk. 47            2.5 60.0   Teller-Ulam    1111    1890     2828      3x
 ```
 
-The barely-critical pure-fission designs span ~8x on compression alone; even
-the big Teller-Ulam devices are only good to a factor of several. Run
+The barely-critical pure-fission designs span ~8x on compression alone. The
+Teller-Ulam secondaries land in the megaton range — and as a sanity check,
+**Red Snow Mt**, literally the *megaton* variant, brackets its actual ~1.1 Mt
+(Yellow Sun Mk.2), while Red Snow Kt stays sub-megaton, as their names demand.
+The secondary LiD burn fraction is grounded to Barroso's simulations (~35–90%,
+see below); an earlier version of this model used a ~20x-too-low burn fraction
+and wrongly put Red Snow Mt at ~40–150 kt. Run
 `python examples/uk_a1171_bands.py` for the full table; see the module
 docstring for the mass interpretation and caveats.
 
@@ -310,12 +316,12 @@ Compose a Sloika layer-cake yield (primary + LiD + U-238 outer shell):
 tnyield layercake --Yp 100 --mLiD 50 --mU 300 --li6 0.4
 ```
 
-W-87-like Teller-Ulam secondary with parameters tuned to match
-Table 10-11:
+W-87-like Teller-Ulam secondary (compact ~2.5 kg LiD charge; the
+Barroso-grounded default burn fraction of ~90% reproduces Table 10-11):
 
 ```
-tnyield secondary --Yp 122 --mLiD 50 --mU 1320 --mSP 10 \
-                  -c 80 --LiD-burn 0.035 --U238-burn 0.0018
+tnyield secondary --Yp 122 --mLiD 2.5 --mU 520 --mSP 10 \
+                  -c 80 --U238-burn 0.0018
 ```
 
 Section 10.4.2 ablation calculation (5 kt deposited in Li diffuser →
@@ -429,15 +435,19 @@ These are estimators, not simulations.  In particular:
   empirical; the book does not give a closed-form expression for it.
   Default `--mult 8` matches the R = 5.2 cm Pu row of Table 9-2 to
   within a factor of ~4.  Values from 5 to 20 are plausible.
-- The Lindl burn-fraction formula `f = ρR / (ρR + H_B)` assumes ideal
-  hot-spot ignition with full burn propagation; real Teller-Ulam
-  secondaries achieve a few per cent of that, because of finite
-  Marshak-wave propagation time, non-uniform compression, and rapid
-  disassembly.  Override the auto-computed value with `--LiD-burn` if
-  you want realistic results.
-- The U-238 tamper burn fraction is mass-based; reasonable defaults
-  are ~10 % for a thin Sloika layer and ~1 % for a thick Teller-Ulam
-  tamper.
+- The LiD secondary burn fraction is grounded to Barroso's own
+  simulations (`plasma.lid_burn_fraction`): a well-tamped **compact**
+  charge burns ~50–90% (his W-87 is ~90% via the Lindl form with
+  H_B ≈ 20 g/cm², rho·R ≈ 150), a tamperless charge collapses to ~5%,
+  and a charge much **larger** than the ~2–3 kg W-87 load is limited by
+  finite-media burn-wave propagation (Section 10.6) — for those the
+  Lindl value is an upper bound, so band down toward ~35% or override
+  with `--LiD-burn`. (An earlier version assumed ~3.5% here; that was a
+  mass-bookkeeping error, wrong by ~20x.)
+- The U-238 tamper/jacket burn fraction is mass-based; ~10 % for a thin
+  Sloika layer, ~1–2 % for a thick Teller-Ulam U-238 tamper. Note this
+  is *fertile* U-238; a *fissile* HEU or Pu secondary component burns
+  far more completely (~50%) and is not yet modeled as a distinct path.
 
 ## References
 
