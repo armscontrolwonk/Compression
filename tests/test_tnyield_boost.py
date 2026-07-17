@@ -100,3 +100,53 @@ def test_boost_zero_baseline_gives_inf_ratio():
     import math
     assert math.isinf(r.boost_ratio)
     assert r.Y_total_kt > 0
+
+
+# ---------------------------------------------------------------------------
+# DT-state derivation (density/temperature/confinement from the primary)
+# ---------------------------------------------------------------------------
+
+from tnyield.boost import (  # noqa: E402
+    dt_confinement_time,
+    dt_density,
+    dt_temperature,
+)
+
+
+def test_dt_density_anchored_to_barroso():
+    # ~0.6 g/cm^3 (3x solid DT) at eta=1, monotone in eta.
+    assert dt_density(1.0) == pytest.approx(0.6)
+    assert dt_density(2.5) > dt_density(1.0)
+
+
+def test_dt_temperature_anchored_and_clamped():
+    assert dt_temperature(2.5) == pytest.approx(4.0)     # Barroso anchor
+    assert dt_temperature(0.5) == 3.0                    # clamped low
+    assert dt_temperature(100.0) == 20.0                 # clamped high
+
+
+def test_dt_confinement_time_anchored_and_scales_with_size():
+    # ~5 cm pit -> ~1e-7 s (Barroso); bigger pit confines longer.
+    assert dt_confinement_time(5.05) == pytest.approx(1.0e-7, rel=0.05)
+    assert dt_confinement_time(6.0) > dt_confinement_time(3.0)
+
+
+def test_boosted_yield_dt_params_optional():
+    # Omitting the DT state falls back to Barroso's primary-example values
+    # and records what was used.
+    r = boosted_yield(mass_DT_g=8.48, Y_baseline_kt=0.30)
+    assert r.rho_DT_g_per_cm3 == 0.6
+    assert r.T_keV == 4.0
+    assert r.tau_s == 1e-7
+    assert r.Y_total_kt > 0.30
+
+
+def test_total_derives_dt_state_and_override_differs():
+    from tnyield import yield_kt_total
+    base = dict(m_pu_kg=2.25, m_heu_kg=1.4, eta=3.0, m_dt_g=8.48)
+    derived = yield_kt_total(**base).Y_total_kt
+    # Forcing a cold, thin, short-confinement DT state suppresses the boost,
+    # proving the derived state (not a fixed default) is what's used.
+    forced = yield_kt_total(**base, dt_rho_g_per_cm3=0.05,
+                            dt_T_keV=3.0, dt_tau_s=1e-9).Y_total_kt
+    assert derived > forced

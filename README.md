@@ -314,7 +314,7 @@ grounded values you can override.
 | process | must add | defaulted (override-able) |
 |---------|----------|---------------------------|
 | **Primary** | `m_pu_kg`, `m_heu_kg`, **`eta`** | Serber b (1.0 Pu / 0.5 HEU) |
-| **Boost** | `mass_DT_g`, DT `rho`, DT `T_keV`, `tau_s`, `Y_baseline_kt` | `extra_fissions_per_fusion_neutron`=8 (empirical) |
+| **Boost** | `mass_DT_g` (rides on the primary) | DT ρ/T/τ **derived from the primary's η and geometry** (override-able); `extra_fissions_per_fusion_neutron`=8 (empirical) |
 | **Layer cake** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_kg` | li6=0.95, LiD burn=0.20, U238 burn=0.15 |
 | **Secondary** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_tamper_kg` | spark=0, `compression`=100, LiD burn=grounded (Barroso ~90%), U238 burn=0.02, spark burn=0.20 |
 
@@ -336,11 +336,15 @@ tamper burn-up — has a grounded default; override only when you know better.
 
 Two things to keep in mind:
 
-- **Boost is the most input-hungry and least grounded.** It needs the DT
-  state (ρ, T, τ) — which really come from the primary implosion, not
-  from you — and its yield hinges on the empirical
+- **Boost's DT state is now derived from the primary.** The DT density,
+  temperature, and confinement time are consequences of the pit's
+  implosion, not free inputs — so via `yield_kt_total` you just give
+  `m_dt_g` and they are derived from η and the pit radius (ρ ∝ η anchored
+  to Barroso's ~0.6 g/cm³; T ~ 4 keV rising with η; τ ~ R_pit/u as the
+  disassembly time), each override-able. This is self-consistent but
+  still **soft**: the derivations are rough (Barroso gets them from a
+  hydro code) and the yield hinges on the empirical
   `extra_fissions_per_fusion_neutron` (default 8, uncertain to ~4×).
-  Treat boosted yields as soft.
 - **The secondary LiD burn fraction is grounded** (Barroso W-87 ~90% for
   a compact tamped charge, ~5% untamped, upper bound for large charges),
   so for the secondary you mostly just supply masses + compression and

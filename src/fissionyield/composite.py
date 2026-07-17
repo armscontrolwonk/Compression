@@ -56,6 +56,7 @@ __all__ = [
     "yield_kt_composite",
     "effective_compression",
     "yield_band",
+    "pit_radius_cm",
     "CompressionFit",
     "YieldBand",
 ]
@@ -297,6 +298,18 @@ def _critical_eta(m_pu, m_heu):
 # ---------------------------------------------------------------------------
 # Public yield function
 # ---------------------------------------------------------------------------
+
+def pit_radius_cm(m_pu_kg: float, m_heu_kg: float, eta: float) -> float:
+    """Outer radius (cm) of the compressed composite pit at compression eta.
+
+    A thin public accessor over the two-region geometry, useful to
+    downstream models that need the pit size (e.g. estimating the DT
+    confinement/disassembly time for boosting)."""
+    if m_pu_kg <= 0.0 and m_heu_kg <= 0.0:
+        return 0.0
+    _, R2 = _radii(m_pu_kg, m_heu_kg, eta)
+    return R2
+
 
 def yield_kt_composite(
     m_pu_kg: float,

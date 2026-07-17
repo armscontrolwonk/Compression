@@ -28,11 +28,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fissionyield import yield_kt_composite
+from fissionyield import pit_radius_cm, yield_kt_composite
 
 from .boost import (
     DEFAULT_EXTRA_FISSIONS_PER_FUSION_NEUTRON,
     boosted_yield,
+    dt_confinement_time,
+    dt_density,
+    dt_temperature,
 )
 from .layer_cake import (
     DEFAULT_LID_BURN_FRACTION as _LC_LID_BURN,
@@ -137,9 +140,9 @@ def yield_kt_total(
     eta: float = 2.5,
     # ---- boost ----------------------------------------------------------
     m_dt_g: float = 0.0,
-    dt_rho_g_per_cm3: float = 0.6,
-    dt_T_keV: float = 4.0,
-    dt_tau_s: float = 1e-7,
+    dt_rho_g_per_cm3: float | None = None,   # None -> derived from eta
+    dt_T_keV: float | None = None,           # None -> derived from eta
+    dt_tau_s: float | None = None,           # None -> derived from pit radius
     extra_fissions_per_fusion_neutron: float = DEFAULT_EXTRA_FISSIONS_PER_FUSION_NEUTRON,
     # ---- layer cake / Sloika --------------------------------------------
     m_li6d_layer_kg: float = 0.0,
@@ -197,11 +200,19 @@ def yield_kt_total(
     Y_boost_added = 0.0
     f_DT = 0.0
     if m_dt_g > 0.0:
+        # The DT state is a consequence of the primary: derive it from the
+        # pit's compression and geometry unless the caller overrides.
+        rho = dt_density(eta) if dt_rho_g_per_cm3 is None else dt_rho_g_per_cm3
+        T = dt_temperature(eta) if dt_T_keV is None else dt_T_keV
+        tau = (
+            dt_confinement_time(pit_radius_cm(m_pu_kg, m_heu_kg, eta))
+            if dt_tau_s is None else dt_tau_s
+        )
         br = boosted_yield(
             mass_DT_g=m_dt_g,
-            rho_DT_g_per_cm3=dt_rho_g_per_cm3,
-            T_keV=dt_T_keV,
-            tau_s=dt_tau_s,
+            rho_DT_g_per_cm3=rho,
+            T_keV=T,
+            tau_s=tau,
             Y_baseline_kt=Y_primary,
             extra_fissions_per_fusion_neutron=extra_fissions_per_fusion_neutron,
         )

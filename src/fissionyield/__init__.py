@@ -10,6 +10,7 @@ from .composite import (
     CompressionFit,
     YieldBand,
     effective_compression,
+    pit_radius_cm,
     yield_band,
     yield_kt_composite,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "yield_kt_composite",
     "effective_compression",
     "yield_band",
+    "pit_radius_cm",
     "CompressionFit",
     "YieldBand",
 ]
