@@ -293,6 +293,59 @@ back-of-envelope tool can deliver.
 | `layer_cake`       | Sloika fission-fusion-fission decomposition |
 | `secondary`        | Teller-Ulam radiation-driven secondary (Ch. 10.4-10.7) |
 
+## Thermonuclear processes and required inputs
+
+Three thermonuclear processes sit on top of the fission primary
+(`fissionyield.yield_kt_composite`):
+
+1. **Boost** (Ch. 9) — DT gas fused in the primary; the 14 MeV neutrons
+   drive extra fission. Adds a small fusion yield plus a larger
+   *added-fission* term.
+2. **Layer cake / Sloika** (Ch. 10.4) — a LiD fusion layer plus a U-238
+   shell that fast-fissions on the fusion neutrons; radially adjacent to
+   the primary (no radiation implosion).
+3. **Teller-Ulam secondary** (Ch. 10.4-10.7) — a radiation-imploded LiD
+   charge with an optional fissile spark plug and a U-238 tamper/jacket.
+
+**Must add** = device-defining, no sensible default (masses, and the
+primary yield the stage rides on). **Defaulted** = physics knobs with
+grounded values you can override.
+
+| process | must add | defaulted (override-able) |
+|---------|----------|---------------------------|
+| **Primary** | `m_pu_kg`, `m_heu_kg`, **`eta`** | Serber b (1.0 Pu / 0.5 HEU) |
+| **Boost** | `mass_DT_g`, DT `rho`, DT `T_keV`, `tau_s`, `Y_baseline_kt` | `extra_fissions_per_fusion_neutron`=8 (empirical) |
+| **Layer cake** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_kg` | li6=0.95, LiD burn=0.20, U238 burn=0.15 |
+| **Secondary** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_tamper_kg` | spark=0, `compression`=100, LiD burn=grounded (Barroso ~90%), U238 burn=0.02, spark burn=0.20 |
+
+Through the one-call `yield_kt_total`, every mass defaults to 0, so you
+add a stage simply by giving it mass. The minimum you must supply:
+
+- **Fissile masses:** `m_pu_kg` / `m_heu_kg` (primary), plus
+  `m_spark_plug_kg` if there's a spark plug.
+- **Fusion fuel:** `m_dt_g` (boost); `m_li6d_layer_kg` /
+  `m_lid_secondary_kg` (LiD — feed the *LiD compound* mass; a Li-6
+  isotope figure is ×~1.335).
+- **Fertile:** `m_u238_layer_kg` / `m_u238_tamper_kg` /
+  `m_u238_jacket_kg`.
+- **One compression:** `eta` for the primary (required — yield is ~10×
+  elastic in it, no safe default); `secondary_compression` defaults to 100.
+
+Everything else — burn fractions, DT state (ρ, T, τ), Li-6 enrichment,
+tamper burn-up — has a grounded default; override only when you know better.
+
+Two things to keep in mind:
+
+- **Boost is the most input-hungry and least grounded.** It needs the DT
+  state (ρ, T, τ) — which really come from the primary implosion, not
+  from you — and its yield hinges on the empirical
+  `extra_fissions_per_fusion_neutron` (default 8, uncertain to ~4×).
+  Treat boosted yields as soft.
+- **The secondary LiD burn fraction is grounded** (Barroso W-87 ~90% for
+  a compact tamped charge, ~5% untamped, upper bound for large charges),
+  so for the secondary you mostly just supply masses + compression and
+  let the physics compute the burn — the one place you don't hand-set it.
+
 ## CLI
 
 The `tnyield` command has five subcommands.
