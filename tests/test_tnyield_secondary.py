@@ -133,3 +133,67 @@ def test_zero_LiD_zero_fusion():
     )
     assert r.Y_fusion_kt == 0.0
     assert r.burn_fraction_LiD == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Fissile (HEU/Pu) secondary component -- distinct from the U-238 tamper
+# ---------------------------------------------------------------------------
+
+def test_fissile_secondary_burns_far_more_than_u238_tamper():
+    # Same 100 kg of metal: fissile HEU (~50%) vs fertile U-238 (~2%).
+    fissile = secondary_yield(
+        Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=0.0,
+        mass_fissile_secondary_kg=100.0, fissile_secondary_material="WGU",
+    ).Y_fissile_secondary_kt
+    fertile = secondary_yield(
+        Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=100.0,
+    ).Y_tamper_kt
+    assert fissile > 20 * fertile        # ~50% vs ~2% burn
+    # 100 kg HEU at 50% ~ 50 kg fissioned x ~19.6 kt/kg ~ 980 kt
+    assert 800 < fissile < 1100
+
+
+def test_fissile_secondary_material_switch():
+    heu = secondary_yield(
+        Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=0.0,
+        mass_fissile_secondary_kg=50.0, fissile_secondary_material="WGU",
+    ).Y_fissile_secondary_kt
+    pu = secondary_yield(
+        Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=0.0,
+        mass_fissile_secondary_kg=50.0, fissile_secondary_material="delta-WGPu",
+    ).Y_fissile_secondary_kt
+    assert heu != pu                     # different per-gram fission energy
+
+
+def test_fissile_secondary_burn_fraction_validated():
+    with pytest.raises(ValueError):
+        secondary_yield(
+            Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=0.0,
+            mass_fissile_secondary_kg=50.0, fissile_secondary_burn_fraction=1.5,
+        )
+    with pytest.raises(ValueError):
+        secondary_yield(
+            Y_primary_kt=0.0, mass_LiD_kg=0.0, mass_U238_tamper_kg=0.0,
+            mass_fissile_secondary_kg=-1.0,
+        )
+
+
+def test_CHIC6_von_hippel_reconstruction():
+    """von Hippel's CHIC-6 (17 Jun 1967, ~3.3 Mt): primary ~20 kt; the
+    secondary carries ~100 kg HEU fissioning ~50% (~1/4 of the secondary
+    yield). Reproduce that decomposition through yield_kt_total."""
+    from tnyield import yield_kt_total
+    r = yield_kt_total(
+        m_pu_kg=6.0, eta=3.0, m_dt_g=4.0,                 # boosted primary ~20 kt
+        m_lid_secondary_kg=60.0, li6_enrichment_secondary=0.55,
+        secondary_compression=60.0,
+        m_fissile_secondary_kg=100.0, fissile_secondary_material="WGU",
+        m_u238_tamper_kg=300.0,
+    )
+    primary_plus_boost = (r.Y_primary_kt + r.Y_boost_fusion_kt
+                          + r.Y_boost_added_fission_kt)
+    assert 10 < primary_plus_boost < 40              # von Hippel ~20 kt
+    assert 800 < r.Y_fissile_secondary_kt < 1100     # ~100 kg HEU at ~50%
+    assert 2500 < r.Y_total_kt < 4000                # ~3.3 Mt
+    secondary = r.Y_total_kt - primary_plus_boost
+    assert 0.20 < r.Y_fissile_secondary_kt / secondary < 0.35   # ~1/4

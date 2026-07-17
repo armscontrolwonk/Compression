@@ -355,7 +355,7 @@ grounded values you can override.
 | **Primary** | `m_pu_kg`, `m_heu_kg`, **`eta`** | Serber b (1.0 Pu / 0.5 HEU) |
 | **Boost** | `mass_DT_g` (rides on the primary) | DT ρ/T/τ **derived from the primary's η and geometry** (override-able); `extra_fissions_per_fusion_neutron`=8 (empirical) |
 | **Layer cake** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_kg` | li6=0.95, LiD burn=0.20, U238 burn=0.15 |
-| **Secondary** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_tamper_kg` | spark=0, `compression`=100, LiD burn=grounded (Barroso ~90%), U238 burn=0.02, spark burn=0.20 |
+| **Secondary** | `Y_primary_kt`, `mass_LiD_kg`, `mass_U238_tamper_kg` | spark=0, `compression`=100, LiD burn=grounded (Barroso ~90%), U238 burn=0.02, spark burn=0.20; optional `m_fissile_secondary_kg` (HEU/Pu pusher, ~50% burn) |
 
 Through the one-call `yield_kt_total`, every mass defaults to 0, so you
 add a stage simply by giving it mass. The minimum you must supply:
@@ -541,9 +541,13 @@ These are estimators, not simulations.  In particular:
   with `--LiD-burn`. (An earlier version assumed ~3.5% here; that was a
   mass-bookkeeping error, wrong by ~20x.)
 - The U-238 tamper/jacket burn fraction is mass-based; ~10 % for a thin
-  Sloika layer, ~1–2 % for a thick Teller-Ulam U-238 tamper. Note this
-  is *fertile* U-238; a *fissile* HEU or Pu secondary component burns
-  far more completely (~50%) and is not yet modeled as a distinct path.
+  Sloika layer, ~1–2 % for a thick Teller-Ulam U-238 tamper. That is
+  *fertile* U-238. A *fissile* HEU or Pu secondary pusher chain-reacts
+  under the secondary neutron flux and burns far more completely (~50 %) —
+  modeled as a distinct channel via `m_fissile_secondary_kg`, calibrated
+  to von Hippel's CHIC-6 reconstruction (China, 17 Jun 1967, ~3.3 Mt:
+  ~100 kg HEU fissioning ~50 %, ~¼ of the secondary yield). Reproduced in
+  `tests/test_tnyield_secondary.py::test_CHIC6_von_hippel_reconstruction`.
 
 ## References
 

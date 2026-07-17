@@ -159,7 +159,12 @@ def _add_mass_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("--spark-mat", default="delta-WGPu",
                    help="Spark plug material (default: delta-WGPu)")
     p.add_argument("--m-u238-tamper", type=float, default=0.0, metavar="KG",
-                   help="Secondary U-238 tamper mass (kg)")
+                   help="Secondary U-238 (fertile) tamper mass (kg)")
+    p.add_argument("--m-fissile-secondary", type=float, default=0.0, metavar="KG",
+                   help="Fissile (HEU/Pu) secondary pusher mass (kg); burns "
+                        "~50%, unlike the U-238 tamper (von Hippel CHIC-6)")
+    p.add_argument("--fissile-secondary-mat", default="WGU",
+                   help="Fissile-secondary material (default: WGU)")
     p.add_argument("--m-u238-jacket", type=float, default=0.0, metavar="KG",
                    help="Tertiary FFF jacket mass (kg)")
     # Knob overrides (defaults flow from yield_kt_total)
@@ -184,6 +189,8 @@ def _build_total_kwargs(args: argparse.Namespace) -> dict:
         m_spark_plug_kg=args.m_spark,
         spark_plug_material=args.spark_mat,
         m_u238_tamper_kg=args.m_u238_tamper,
+        m_fissile_secondary_kg=args.m_fissile_secondary,
+        fissile_secondary_material=args.fissile_secondary_mat,
         m_u238_jacket_kg=args.m_u238_jacket,
     )
     if args.LiD_burn_secondary is not None:

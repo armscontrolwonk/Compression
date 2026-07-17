@@ -209,6 +209,7 @@ def test_all_solvable_masses_round_trip():
         m_li6d_layer_kg=20.0, m_u238_layer_kg=100.0,
         m_lid_secondary_kg=30.0, m_spark_plug_kg=5.0,
         m_u238_tamper_kg=150.0, m_u238_jacket_kg=400.0,
+        m_fissile_secondary_kg=25.0,
     )
     Y_target = yield_kt_total(**base).Y_total_kt
     for unknown in SOLVABLE_MASSES:

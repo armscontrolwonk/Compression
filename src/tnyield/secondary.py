@@ -58,6 +58,7 @@ from dataclasses import dataclass
 from .plasma import H_B_LID_UNTAMPED, burn_fraction_lindl
 from .reactions import (
     KT_PER_G_LI6D,
+    KT_PER_G_PU239_FISSION,
     KT_PER_G_U235_FISSION,
     KT_PER_G_U238_FISSION,
 )
@@ -78,6 +79,14 @@ DEFAULT_U238_BURN_FRACTION = 0.02
 DEFAULT_SPARK_PLUG_BURN_FRACTION = 0.20
 DEFAULT_XRAY_FRACTION = 0.80  # fraction of primary yield emerging as X-rays
 
+# A *fissile* (HEU or Pu) component used in the secondary -- as a pusher or
+# tamper, distinct from the small central spark plug and from the *fertile*
+# U-238 tamper -- chain-reacts under the secondary's neutron flux and burns
+# far more completely than U-238 fast fission. von Hippel's reconstruction of
+# China's CHIC-6 (17 June 1967, ~3.3 Mt) has ~100 kg of HEU in the secondary
+# with ~half of it fissioned, contributing ~1/4 of the secondary yield.
+DEFAULT_FISSILE_SECONDARY_BURN_FRACTION = 0.50  # von Hippel CHIC-6 anchor
+
 
 @dataclass(frozen=True)
 class SecondaryResult:
@@ -87,6 +96,7 @@ class SecondaryResult:
     Y_spark_plug_kt: float
     Y_fusion_kt: float
     Y_tamper_kt: float
+    Y_fissile_secondary_kt: float
     Y_total_kt: float
 
     compression: float        # rho / rho_0 of the LiD at peak
@@ -97,6 +107,7 @@ class SecondaryResult:
     fraction_spark_plug: float
     fraction_fusion: float
     fraction_tamper: float
+    fraction_fissile_secondary: float
 
     def __str__(self) -> str:
         return (
@@ -108,6 +119,8 @@ class SecondaryResult:
             f" ({self.fraction_fusion*100:5.1f} %)\n"
             f"U-238 tamper fast fission : {self.Y_tamper_kt:9.3f} kt"
             f" ({self.fraction_tamper*100:5.1f} %)\n"
+            f"Fissile-secondary fission : {self.Y_fissile_secondary_kt:9.3f} kt"
+            f" ({self.fraction_fissile_secondary*100:5.1f} %)\n"
             f"Total yield               : {self.Y_total_kt:9.3f} kt\n"
             f"  LiD compression rho/rho_0 : {self.compression:.2f}\n"
             f"  Compressed rho*R          : {self.rho_R_g_per_cm2:.3f} g/cm^2\n"
@@ -139,6 +152,9 @@ def secondary_yield(
     U238_burn_fraction: float = DEFAULT_U238_BURN_FRACTION,
     spark_plug_burn_fraction: float = DEFAULT_SPARK_PLUG_BURN_FRACTION,
     H_B_LiD: float = DEFAULT_H_B_LID,
+    mass_fissile_secondary_kg: float = 0.0,
+    fissile_secondary_material: str = "WGU",
+    fissile_secondary_burn_fraction: float = DEFAULT_FISSILE_SECONDARY_BURN_FRACTION,
 ) -> SecondaryResult:
     """Estimate the total yield and decomposition of a Teller-Ulam
     secondary stage.
@@ -170,6 +186,14 @@ def secondary_yield(
         20 (W-87-calibrated). Only used when `LiD_burn_fraction` is None;
         if no tamper is present the untamped collapse value is used
         instead (energy leaks out before the fuel reacts).
+    mass_fissile_secondary_kg : mass of a *fissile* (HEU or Pu) secondary
+        component -- a pusher/tamper, distinct from the small spark plug
+        and the fertile U-238 tamper. Being fissile it chain-reacts under
+        the secondary neutron flux and burns far more completely.
+    fissile_secondary_material : 'WGU' (default) or a Pu key; sets the
+        per-gram fission energy.
+    fissile_secondary_burn_fraction : fraction fissioned, default 0.50
+        (von Hippel's CHIC-6 reconstruction: ~half the HEU fissioned).
 
     Returns
     -------
@@ -181,9 +205,12 @@ def secondary_yield(
         ("mass_LiD_kg", mass_LiD_kg),
         ("mass_U238_tamper_kg", mass_U238_tamper_kg),
         ("mass_spark_plug_kg", mass_spark_plug_kg),
+        ("mass_fissile_secondary_kg", mass_fissile_secondary_kg),
     ):
         if val < 0:
             raise ValueError(f"{name} must be >= 0")
+    if not 0.0 <= fissile_secondary_burn_fraction <= 1.0:
+        raise ValueError("fissile_secondary_burn_fraction must be in [0, 1]")
     if compression <= 0:
         raise ValueError("compression must be > 0")
 
@@ -218,21 +245,35 @@ def secondary_yield(
         KT_PER_G_U235_FISSION * 1000.0 * mass_spark_plug_kg * spark_plug_burn_fraction
     )
 
-    Y_total = Y_primary_kt + Y_spark + Y_fusion + Y_tamper
+    # Fissile (HEU/Pu) secondary component: chain-reacts under the secondary
+    # neutron flux, so it burns ~50% (von Hippel CHIC-6), unlike U-238 (~2%).
+    kt_per_g_fissile = (
+        KT_PER_G_PU239_FISSION
+        if "pu" in fissile_secondary_material.lower()
+        else KT_PER_G_U235_FISSION
+    )
+    Y_fissile_secondary = (
+        kt_per_g_fissile * 1000.0
+        * mass_fissile_secondary_kg * fissile_secondary_burn_fraction
+    )
+
+    Y_total = Y_primary_kt + Y_spark + Y_fusion + Y_tamper + Y_fissile_secondary
 
     if Y_total > 0:
         fp = Y_primary_kt / Y_total
         fs = Y_spark / Y_total
         ff = Y_fusion / Y_total
         ft = Y_tamper / Y_total
+        ffs = Y_fissile_secondary / Y_total
     else:
-        fp = fs = ff = ft = 0.0
+        fp = fs = ff = ft = ffs = 0.0
 
     return SecondaryResult(
         Y_primary_kt=Y_primary_kt,
         Y_spark_plug_kt=Y_spark,
         Y_fusion_kt=Y_fusion,
         Y_tamper_kt=Y_tamper,
+        Y_fissile_secondary_kt=Y_fissile_secondary,
         Y_total_kt=Y_total,
         compression=compression,
         rho_R_g_per_cm2=rho_R,
@@ -241,4 +282,5 @@ def secondary_yield(
         fraction_spark_plug=fs,
         fraction_fusion=ff,
         fraction_tamper=ft,
+        fraction_fissile_secondary=ffs,
     )

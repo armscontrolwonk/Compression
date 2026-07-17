@@ -50,6 +50,7 @@ from .reactions import (
     KT_PER_G_PU239_FISSION,
 )
 from .secondary import (
+    DEFAULT_FISSILE_SECONDARY_BURN_FRACTION,
     DEFAULT_H_B_LID,
     DEFAULT_SPARK_PLUG_BURN_FRACTION,
 )
@@ -74,6 +75,7 @@ SOLVABLE_MASSES = (
     "m_lid_secondary_kg",
     "m_spark_plug_kg",
     "m_u238_tamper_kg",
+    "m_fissile_secondary_kg",
     "m_u238_jacket_kg",
 )
 
@@ -94,6 +96,7 @@ class TotalYieldResult:
     Y_spark_plug_kt: float
     Y_secondary_fusion_kt: float
     Y_secondary_tamper_kt: float
+    Y_fissile_secondary_kt: float
 
     Y_jacket_kt: float
 
@@ -110,6 +113,7 @@ class TotalYieldResult:
             ("Secondary: spark plug", self.Y_spark_plug_kt),
             ("Secondary: LiD fusion", self.Y_secondary_fusion_kt),
             ("Secondary: U-238 tamper", self.Y_secondary_tamper_kt),
+            ("Secondary: fissile fission", self.Y_fissile_secondary_kt),
             ("Tertiary FFF jacket", self.Y_jacket_kt),
         ]
         lines = [f"Total yield                : {self.Y_total_kt:10.3f} kt"]
@@ -161,6 +165,9 @@ def yield_kt_total(
     u238_tamper_burn_fraction: float = _SEC_U238_BURN,
     spark_plug_burn_fraction: float = DEFAULT_SPARK_PLUG_BURN_FRACTION,
     secondary_H_B_LiD: float = DEFAULT_H_B_LID,
+    m_fissile_secondary_kg: float = 0.0,
+    fissile_secondary_material: str = "WGU",
+    fissile_secondary_burn_fraction: float = DEFAULT_FISSILE_SECONDARY_BURN_FRACTION,
     # ---- tertiary FFF jacket --------------------------------------------
     m_u238_jacket_kg: float = 0.0,
     jacket_burn_fraction: float = DEFAULT_JACKET_BURN_FRACTION,
@@ -186,6 +193,7 @@ def yield_kt_total(
         "m_li6d_layer_kg": m_li6d_layer_kg, "m_u238_layer_kg": m_u238_layer_kg,
         "m_lid_secondary_kg": m_lid_secondary_kg, "m_spark_plug_kg": m_spark_plug_kg,
         "m_u238_tamper_kg": m_u238_tamper_kg, "m_u238_jacket_kg": m_u238_jacket_kg,
+        "m_fissile_secondary_kg": m_fissile_secondary_kg,
     }.items():
         if val < 0:
             raise ValueError(f"{name} must be >= 0")
@@ -237,7 +245,8 @@ def yield_kt_total(
         Y_lc_tamper = 0.0
 
     # 4. Secondary
-    if m_lid_secondary_kg > 0.0 or m_u238_tamper_kg > 0.0 or m_spark_plug_kg > 0.0:
+    if (m_lid_secondary_kg > 0.0 or m_u238_tamper_kg > 0.0
+            or m_spark_plug_kg > 0.0 or m_fissile_secondary_kg > 0.0):
         kt_per_g_spark = _spark_plug_kt_per_g(spark_plug_material)
         Y_spark = (
             kt_per_g_spark * 1000.0 * m_spark_plug_kg * spark_plug_burn_fraction
@@ -253,14 +262,19 @@ def yield_kt_total(
             U238_burn_fraction=u238_tamper_burn_fraction,
             spark_plug_burn_fraction=spark_plug_burn_fraction,
             H_B_LiD=secondary_H_B_LiD,
+            mass_fissile_secondary_kg=m_fissile_secondary_kg,
+            fissile_secondary_material=fissile_secondary_material,
+            fissile_secondary_burn_fraction=fissile_secondary_burn_fraction,
         )
         Y_sec_fusion = sec.Y_fusion_kt
         Y_sec_tamper = sec.Y_tamper_kt
+        Y_fissile_secondary = sec.Y_fissile_secondary_kt
         f_sec_LiD = sec.burn_fraction_LiD
     else:
         Y_spark = 0.0
         Y_sec_fusion = 0.0
         Y_sec_tamper = 0.0
+        Y_fissile_secondary = 0.0
         f_sec_LiD = 0.0
 
     # 5. Tertiary FFF jacket
@@ -272,7 +286,7 @@ def yield_kt_total(
         Y_primary
         + Y_boost_fusion + Y_boost_added
         + Y_lc_fusion + Y_lc_tamper
-        + Y_spark + Y_sec_fusion + Y_sec_tamper
+        + Y_spark + Y_sec_fusion + Y_sec_tamper + Y_fissile_secondary
         + Y_jacket
     )
 
@@ -286,6 +300,7 @@ def yield_kt_total(
         Y_spark_plug_kt=Y_spark,
         Y_secondary_fusion_kt=Y_sec_fusion,
         Y_secondary_tamper_kt=Y_sec_tamper,
+        Y_fissile_secondary_kt=Y_fissile_secondary,
         Y_jacket_kt=Y_jacket,
         DT_burn_fraction=f_DT,
         secondary_LiD_burn_fraction=f_sec_LiD,
