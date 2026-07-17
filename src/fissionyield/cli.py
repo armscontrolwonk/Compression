@@ -10,6 +10,7 @@ import numpy as np
 
 from . import historical
 from .composite import effective_compression, yield_band, yield_kt_composite
+from .implosion import GEOMETRY_OFFSET, device_yield_band, implosion_compression
 from .materials import MATERIALS, get_material
 from .model import MODELS, compression, kappa, mass_kg, yield_kt
 
@@ -480,6 +481,63 @@ def _do_anchors(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_implode(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser(
+        "implode",
+        help="CRUDE device -> compression (eta) and yield BAND, calibrated "
+             "to Barroso's hydro implosions.",
+        description=(
+            "Estimate the compression an implosion achieves from the HE, "
+            "tamper, and pit masses, then the resulting yield band. "
+            "EXPERIMENTAL and order-of-magnitude: estimating eta is exactly "
+            "what Barroso does with a hydrocode, and yield is ~10x elastic "
+            "in eta -- read the band, not the point."
+        ),
+    )
+    p.add_argument("--m-he", type=float, required=True, metavar="KG",
+                   help="Chemical high-explosive mass (kg)")
+    p.add_argument("--m-pu", type=float, default=0.0, metavar="KG",
+                   help="Plutonium pit mass (kg)")
+    p.add_argument("--m-heu", type=float, default=0.0, metavar="KG",
+                   help="HEU pit mass (kg)")
+    p.add_argument("--m-tamper", type=float, default=0.0, metavar="KG",
+                   help="Tamper/reflector mass (kg), e.g. U-natural")
+    p.add_argument("--geometry", choices=sorted(GEOMETRY_OFFSET),
+                   default="hollow", help="Pit geometry (default: hollow)")
+    p.add_argument("--he-power", type=float, default=1.0, metavar="X",
+                   help="Composite-B-equivalent power of the explosive")
+    p.add_argument("--pu-material", default="alpha-WGPu",
+                   help="Pu phase for the yield (default: alpha-WGPu, the "
+                        "calibration phase; use delta-WGPu for a delta pit)")
+
+
+def _do_implode(args: argparse.Namespace) -> int:
+    m_fissile = args.m_pu + args.m_heu
+    if m_fissile <= 0:
+        print("error: give a positive --m-pu and/or --m-heu", file=sys.stderr)
+        return 2
+    imp = implosion_compression(
+        args.m_he, m_fissile, args.m_tamper,
+        geometry=args.geometry, he_relative_power=args.he_power,
+    )
+    print("CRUDE implosion estimate (Barroso-calibrated; read the band):")
+    print(f"  HE {args.m_he:g} kg, fissile {m_fissile:g} kg, "
+          f"tamper {args.m_tamper:g} kg, {args.geometry}")
+    print(f"  compression eta : {imp.eta_low:.2f} .. [{imp.eta:.2f}] .. "
+          f"{imp.eta_high:.2f}")
+    d = device_yield_band(
+        m_he_kg=args.m_he, m_pu_kg=args.m_pu, m_heu_kg=args.m_heu,
+        m_tamper_kg=args.m_tamper, geometry=args.geometry,
+        he_relative_power=args.he_power, pu_material=args.pu_material,
+    )
+    span = d.Y_high / d.Y_low if d.Y_low > 1e-9 else float("inf")
+    print(f"  yield band      : {d.Y_low:.2g} .. [{d.Y_nominal:.2g}] .. "
+          f"{d.Y_high:.2g} kt   (span {span:.0f}x)")
+    print("  NB: eta is ~10x elastic in yield; off Barroso's alpha-Pu / "
+          "hollow-pit calibration this is a guess.")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="fissionyield",
@@ -496,6 +554,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_composite(sub)
     _add_anchors(sub)
     _add_design_curve(sub)
+    _add_implode(sub)
 
     args = parser.parse_args(argv)
     if args.cmd == "list":
@@ -510,6 +569,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _do_anchors(args)
     if args.cmd == "design-curve":
         return _do_design_curve(args)
+    if args.cmd == "implode":
+        return _do_implode(args)
     parser.error(f"unknown command {args.cmd!r}")
     return 2
 

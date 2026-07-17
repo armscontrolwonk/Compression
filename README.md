@@ -245,6 +245,45 @@ and wrongly put Red Snow Mt at ~40–150 kt. Run
 `python examples/uk_a1171_bands.py` for the full table; see the module
 docstring for the mass interpretation and caveats.
 
+## Device → compression (a crude implosion front-end)
+
+Everywhere above, compression η is an *input* you must supply — because in
+Cochran's model the implosion is a black box. Barroso instead *computes* η
+with a Lagrangian hydrocode (his Ch. 6/8: convergent detonation → shock →
+tamper → pit, with real equations of state). `fissionyield.implosion` is a
+**crude, experimental** stand-in for that: it fits a 3-parameter log law to
+Barroso's own hydro results (Tables 8-2/8-3 — a 6 kg hollow α-Pu pit driven
+by Composite B), whose yields we invert to the η his implosion achieved.
+
+    η ≈ 0.59 + 0.43·ln(m_HE/m_fissile) + 0.22·ln(1 + m_tamper/m_fissile) + geom
+
+It reproduces that calibration set to ±0.06 in η — note the tamper *raises*
+η (confinement beats the inertia penalty, as Barroso's Table 8-3 shows):
+
+```
+fissionyield implode --m-he 108 --m-pu 6 --m-tamper 18.2
+#   compression eta : 1.89 .. [2.14] .. 2.39
+#   yield band      : 3 .. [8.3] .. 17 kt   (span 6x)   [Barroso hydro: 8.4 kt]
+```
+
+**Read the band, not the point**, and take it as order-of-magnitude:
+
+- Off the calibration set (other pit masses, materials, geometries, HE) it
+  is an extrapolation. Yields default to `alpha-WGPu` to stay consistent
+  with the α-Pu calibration; pass `pu_material=delta-WGPu` for a delta pit
+  (it yields far less at the same η).
+- Because yield is ~10× elastic in η, even a good η leaves the yield
+  uncertain to ~2× (more near the criticality cliff). The wide band **is**
+  the result. Barroso also notes only ~5% of the chemical energy reaches the
+  pit in spherical implosion — that inefficiency is baked into the fit, so
+  don't push the inputs far from weapon-like values.
+
+```python
+from fissionyield import implosion_compression, device_yield_band
+implosion_compression(108, 6.0, 18.2)          # -> eta band
+device_yield_band(m_he_kg=108, m_pu_kg=6.0, m_tamper_kg=18.2)   # -> yield band
+```
+
 ## Materials
 
 From Cochran's Table 3.1. Use the `key` column (or any alias) with

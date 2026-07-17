@@ -6,6 +6,12 @@ specifically equations (6.49) and (6.57), with closed-form back-solves
 under (6.57) and numerical back-solves under (6.49).
 """
 
+from .implosion import (
+    DeviceYield,
+    ImplosionEstimate,
+    device_yield_band,
+    implosion_compression,
+)
 from .composite import (
     CompressionFit,
     YieldBand,
@@ -29,6 +35,10 @@ __all__ = [
     "effective_compression",
     "yield_band",
     "pit_radius_cm",
+    "implosion_compression",
+    "device_yield_band",
+    "ImplosionEstimate",
+    "DeviceYield",
     "CompressionFit",
     "YieldBand",
 ]
