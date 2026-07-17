@@ -320,6 +320,11 @@ one or two equations, get a yield back.  No PDE solvers, no
 3-temperature hydrodynamics — those are well outside what a
 back-of-envelope tool can deliver.
 
+> `fissionyield` implements Cochran (compression η as an *input*); `tnyield`
+> and `fissionyield.implosion` draw on Barroso (who *computes* η with a
+> hydrocode). See [`docs/cochran_vs_barroso.md`](docs/cochran_vs_barroso.md)
+> for how the two models relate.
+
 ## Modules
 
 | module             | purpose |
