@@ -41,6 +41,16 @@ from .reactions import (
 # is below the propagation threshold (Eq. 10.10, RHOR_LIDT_PROPAGATION).
 # The U-238 tamper captures roughly 15 % of the fusion neutrons (book,
 # line 12586).
+#
+# TENSION (not yet acted on): Ford, *Building the H Bomb* (2015), states Joe-4 /
+# Sloika (Aug 1953) drew "about 15 to 20 percent" of its energy from
+# thermonuclear reactions. On a Joe-4-like configuration this 0.20 default
+# gives a ~33 % fusion fraction -- roughly double Ford's figure; ~0.10 would
+# reproduce it. That is a second, independent anchor (it constrains the Sloika
+# *layer*, not a Teller-Ulam secondary), suggesting the default is high. It is
+# left unchanged because the mass split it depends on (LiD vs U-238) is a guess
+# and our Joe-4 total also overshoots the historical ~400 kt -- so this is weak
+# evidence, recorded rather than retuned. See docs/cochran_vs_barroso.md.
 DEFAULT_LID_BURN_FRACTION = 0.20         # 20 % typical for a thin layer
 DEFAULT_U238_BURN_FRACTION = 0.15        # ~15 % of fusion neutrons cause fast fission
 

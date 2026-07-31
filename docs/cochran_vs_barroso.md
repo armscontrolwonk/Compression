@@ -102,6 +102,71 @@ dominates the uncertainty (yield is ~10× elastic in η), and
 also `fissionyield.effective_compression` (invert a known yield to the effective
 η a device achieved) and `yield_band` (report yield over an η sweep).
 
+## Why two models at all — the historical argument
+
+The split between a simplified analytic model and a full simulation is not an
+accident of this repo; it mirrors how the physics was actually done, and the
+memoirs make the division sharper than "they're complementary."
+
+**Simplified models falsify and scope; simulations design.** In 1950 the
+classical "Super" was the design everyone believed in. It was killed not by a
+supercomputer but by *deliberately simplified hand calculation* — Ulam with
+C.J. Everett, and Fermi — showing the fuel would not stay lit. In Teller's own
+words (quoted by Ulam), that work "indicated that we were on the wrong track,
+that the hydrogen bomb design we thought would work best would not work at
+all." That is the Cochran end of the spectrum: ruthless simplification, used to
+be *decisive against intuition*. But the design that did work — radiation
+implosion of a compressed secondary — could not be settled in closed form, and
+Ulam went on to invent both Monte Carlo (for neutron transport) and the
+particle-ensemble method for compressible flow precisely because the implosion
+had to be *simulated*. That is the Barroso end. So the record says: reach for
+the simplified model to falsify and to bound; reach for the simulation to
+design. `fissionyield` is the first job; `tnyield` + a real hydrocode would be
+the second.
+
+**A cautionary note on regime of validity.** Before 1951 Teller argued that
+compression could not help the Super: compressing the fuel raises the reaction
+rate, but raises the radiation-loss rate by the same factor, so no net gain.
+The argument is a correct scaling — *in the runaway regime it assumes*. Once the
+fuel and radiation reach thermal equilibrium it is simply false (in equilibrium
+matter is not losing energy to radiation, only exchanging it), and that
+realization is the Teller-Ulam "first insight." A right scaling argument applied
+in the wrong regime blocked the H-bomb for years. Every burn fraction and
+compression scaling in this codebase carries the same hazard, which is why the
+grounded parameters (e.g. `plasma.lid_burn_fraction`, `boost.dt_*`) state their
+regime in the signature rather than in prose. The radiation term that Teller
+mis-scaled — radiation, in equilibrium, occupies volume and so "soaks up less of
+the total energy" when compressed — is literally the `a·T⁴·V` term in
+`plasma.plasma_energy_density()` (Barroso's Section 10.4.2 EOS). The single
+equation we lifted for the ablation calculation is the mathematical statement of
+the invention.
+
+## Design provenance (what the `tnyield` channels are)
+
+The memoirs also date and attribute the architectures `tnyield` models:
+
+- **Layer cake / Sloika** (`tnyield.layer_cake`) — alternating layers of fission
+  and fusion fuel. Named the "alarm clock" by Teller and Richtmyer (1946) and,
+  independently, the "Sloika" (layer cake) by Sakharov (1948). Originally
+  U-235 + *deuterium*; the lithium-6-deuteride substitution is Ginzburg's
+  "second idea" (1949; Teller had proposed LiD in the US in 1947). Our LiD path
+  is that later variant.
+- **Boosting** (`tnyield.boost`) — a separate, contemporaneous idea: "a small
+  container of thermonuclear fuel at the center of a fission bomb," modeled here
+  as its own channel, not a secondary.
+- **Teller-Ulam secondary** (`tnyield.secondary`) — radiation implosion. The
+  radiation is the *agent* of compression, but (per Ford, citing Sublette) most
+  of the "push" is **ablation** of the outside of the fuel container — exactly
+  the mechanism our `secondary` docstring invokes.
+
+One soft empirical cross-check falls out of Ford: he states Joe-4 / Sloika
+(Aug 1953) drew "about 15 to 20 percent" of its energy from thermonuclear
+reactions. Our `layer_cake` default `LiD_burn_fraction = 0.20` gives ~33% on a
+Joe-4-like configuration; ~0.10 reproduces Ford's figure. This is weak evidence
+that the default is high, but the mass split it depends on is guesswork, so it
+is recorded as a *tension*, not acted on — see the note by
+`DEFAULT_LID_BURN_FRACTION` in `layer_cake.py`.
+
 ## References
 
 - T.B. Cochran, *Bare Homogeneous Fast Fission Device Using One-Group Diffusion
@@ -110,3 +175,8 @@ also `fissionyield.effective_compression` (invert a known yield to the effective
   SBPC (2009).
 - R. Serber, *The Los Alamos Primer* (1992) — the efficiency derivation both
   build on.
+- S. Ulam, *Adventures of a Mathematician* (1976) — the classical-Super
+  falsification and the origins of Monte Carlo / particle-ensemble hydro.
+- K.W. Ford, *Building the H Bomb: A Personal History* (2015) — the Teller-Ulam
+  insights, radiation implosion / ablation, and the alarm-clock/Sloika
+  provenance and Joe-4 thermonuclear fraction.
